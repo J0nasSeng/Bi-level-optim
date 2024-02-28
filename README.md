@@ -25,10 +25,19 @@ To run the architecture search use the *train_search.py* file in Bi-level-optim/
 The standard experiment to run is a macro-architecture search for "Exchange". <br>
 If you like to run a different experiment setup use the options stated in lines 126 to 141. <br>
 Please set only one dataset flag to true at a time.
+```
+cd Bi-level-optim/ArchSearch/darts/
+python train_search.py
+```
 
 ## Training PWN
 To train PWN, either standard or with an optimized architecture use the *training.py* file in Bi-level-optim/PWN/ <br>
 The standard experiment to run is the training of an optimized architecture for "Exchange". <br>
+```
+cd Bi-level-optim/PWN/
+python training.py
+```
+
 In line 26 and 58 you can choose wether or not to use an optimized architecture <br>
 If you want to run an experiment with the larger vanilla model mentioned in the paper set the <br>
 aforementioned options to False and set *config.rnn_layer_config.n_layers* in line 37 to 12. <br>
