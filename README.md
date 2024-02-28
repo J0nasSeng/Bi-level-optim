@@ -1,7 +1,8 @@
 # Bi-level-optim
 
 ## Preface
-This Code belongs to the AutoML Conf 2024 Paper titeled "Bi-Level One-Shot Architecture Search for Probabilistic Time Series Forecasting"
+This code was executed in a virtual python environment using Python 3.9.
+This Code belongs to the AutoML Conf 2024 Paper titeled "Bi-Level One-Shot Architecture Search for Probabilistic Time Series Forecasting".
 This Code contains everything necessary to run experiments on the "Exchange" as well as "Power" dataset referenced in the paper.
 To obtain the other dataset follow these steps: <br>
 M4 <br>
