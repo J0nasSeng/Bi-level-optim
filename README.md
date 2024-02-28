@@ -31,7 +31,7 @@ To train PWN, either standard or with an optimized architecture use the *trainin
 The standard experiment to run is the training of an optimized architecture for "Exchange". <br>
 In line 26 and 58 you can choose wether or not to use an optimized architecture <br>
 If you want to run an experiment with the larger vanilla model mentioned in the paper set the <br>
-aforementioned options to Falsee and set *config.rnn_layer_config.n_layers* in line 37 to 12. <br>
+aforementioned options to False and set *config.rnn_layer_config.n_layers* in line 37 to 12. <br>
 To other experiments different experiments define your own at line 105 to 114 (multiple at oncee possible). <br>
 Possible selection options are:<br>
   * ReadX -> Choose the appropiate read function for your dataset <br>
