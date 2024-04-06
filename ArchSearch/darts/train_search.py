@@ -15,8 +15,8 @@ import torch.backends.cudnn as cudnn
 import warnings
 import copy
 
-from darts.darts_cnn.model_search import Network as CWSPNModelSearch
-from darts.darts_rnn.model_search import RNNModelSearch
+from darts_cnn.model_search import Network as CWSPNModelSearch
+from darts_rnn.model_search import RNNModelSearch
 from model.pwn_em_for_darts import PWNEM
 from model.pwn_for_darts import PWN
 from model.transformer.transformer_config import TransformerConfig
@@ -30,6 +30,10 @@ from model.wein.EinsumNetwork.ExponentialFamilyArray import NormalArray, Multiva
 from data_source import BasicSelect, Mackey, ReadPowerPKL, ReadM4, ReadExchangePKL, ReadWikipediaPKL, ReadSolarPKL
 from preprocessing import *
 from torch.utils.data import TensorDataset, DataLoader
+from rtpt import RTPT
+
+
+os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 
 device = 'cuda'
 
@@ -57,7 +61,7 @@ parser.add_argument('--seed', type=int, default=13, help='random seed')
 parser.add_argument('--grad_clip', type=float, default=5, help='gradient clipping')
 parser.add_argument('--train_portion', type=float, default=0.5, help='portion of training data')
 parser.add_argument('--unrolled', action='store_true', default=False, help='use one-step unrolled validation loss')
-parser.add_argument('--arch_learning_rate', type=float, default=1e-4 , help='learning rate for arch encoding') #3e-4 standard
+parser.add_argument('--arch_learning_rate', type=float, default=3e-4 , help='learning rate for arch encoding') #3e-4 standard
 parser.add_argument('--arch_weight_decay', type=float, default=1e-3, help='weight decay for arch encoding')
 args = parser.parse_args()
 
@@ -125,15 +129,15 @@ def main(rand):
 
   use_wiki = False
   use_Power = False
-  use_exchange = True
+  use_exchange = False
   use_solar = False
-  use_M4 = False
+  use_M4 = True
 
 ############################################### Choose micro arch search ###############################################
 
-  search_srnn = False
+  search_srnn = True
   compare_search_srnn_to_transformer = False
-  search_cwspn = False
+  search_cwspn = True
   compare_search_cwspn_to_wein = False
   turn_off_wein = False
 
@@ -142,7 +146,7 @@ def main(rand):
 
 ###################################  Load  Data ########################################################################
 
-  m4_key = "Daily"
+  m4_key = "Quarterly"
   m4_settings = {
     'Hourly': {'window_size': 24, 'fft_compression': 2, 'context_timespan': int(20 * 24),
                'prediction_timespan': int(2 * 24), 'timespan_step': int(.5 * 24)},  # 700 Min Context
@@ -337,6 +341,9 @@ def main(rand):
 
   architect = Architect(model, args)
 
+  rtpt = RTPT('JS', 'Bi-Level NAS', args.epochs)
+  rtpt.start()
+
   for epoch in range(args.epochs):
     scheduler.step()
     lr = scheduler.get_lr()[0]
@@ -368,6 +375,7 @@ def main(rand):
     logging.info('SPN weights %s', F.softmax(model.alphas_reduce, dim=-1).tolist())
 
     utils.save(model, os.path.join(args.save, 'weights.pt'))
+    rtpt.step()
 
 def train_new(train_loader,test_loader, model, architect, criterion, optimizer, lr,pwn_model,use_smape,skip_after_n,n_skip):
   objs = utils.AvgrageMeter()

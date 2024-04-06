@@ -46,8 +46,10 @@ class MixedOp(nn.Module):
             else:
                 pred_srnn, f_c_srnn = self._ops[1](batch_x, batch_y,srnn_arch_weights, return_coefficients=True)
 
-            out_1 = pred_trans * weights[0][0] + pred_srnn * weights[0][1]
-            out_2 = f_c_trans * weights[0][0] + f_c_srnn * weights[0][1]
+            #out_1 = pred_trans * weights[0][0] + pred_srnn * weights[0][1]
+            #out_2 = f_c_trans * weights[0][0] + f_c_srnn * weights[0][1]
+            out_1 = pred_trans * 0 + pred_srnn * 1
+            out_2 = f_c_trans * 0 + f_c_srnn * 1
 
         else:
             ##### cwspn ######
@@ -80,7 +82,7 @@ class MixedOp(nn.Module):
 
                 prediction_ll_wein, w_in_cwspn_2 = spn_2.westimator.spn(y_), y_
 
-            out_1 = predicition_ll_cwspn * weights[0][0] + prediction_ll_wein * weights[0][1]
+            out_1 = predicition_ll_cwspn * 1 + prediction_ll_wein * 0
             out_2 = 0
 
         return out_1, out_2
@@ -255,8 +257,8 @@ class Network(nn.Module):
         k = sum(1 for i in range(self._steps))
         num_ops = 2  # len(PWN_PRIMITIVES)
 
-        self.alphas_normal = Variable(1e-3 * torch.randn(k, num_ops).cuda(), requires_grad=True)
-        self.alphas_reduce = Variable(1e-3 * torch.randn(k, num_ops).cuda(), requires_grad=True)
+        self.alphas_normal = Variable(1e-3 * torch.randn(k, num_ops).cuda(), requires_grad=False)
+        self.alphas_reduce = Variable(1e-3 * torch.randn(k, num_ops).cuda(), requires_grad=False)
         #self.alphas_reduce.requires_grad = False
         #self.alphas_reduce[0, 0] += 10
         #self.alphas_normal.requires_grad = False

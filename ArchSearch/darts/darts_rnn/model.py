@@ -2,12 +2,13 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from darts.darts_rnn.genotypes import STEPS
-from darts.darts_rnn.utils import mask2d
-from darts.darts_rnn.utils import LockedDropout
-from darts.darts_rnn.utils import embedded_dropout
+from darts_rnn.genotypes import STEPS
+from darts_rnn.utils import mask2d
+from darts_rnn.utils import LockedDropout
+from darts_rnn.utils import embedded_dropout
 from torch.autograd import Variable
 
+#from model.spectral_rnn.cgRNN import RNNLayer
 from model.spectral_rnn.cgRNN import RNNLayer
 
 INITRANGE = 0.04

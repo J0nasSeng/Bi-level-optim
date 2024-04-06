@@ -5,9 +5,9 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 #from genotypes import PRIMITIVES
 #from genotypes import Genotype
-from darts.darts_cnn.operations import *
-from darts.darts_cnn.genotypes import PRIMITIVES
-from darts.darts_cnn.genotypes import Genotype
+from darts_cnn.operations import *
+from darts_cnn.genotypes import PRIMITIVES
+from darts_cnn.genotypes import Genotype
 class MixedOp(nn.Module):
 
   def __init__(self, C, stride):

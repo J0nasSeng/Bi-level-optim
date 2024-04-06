@@ -1,10 +1,10 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from darts.darts_rnn.genotypes import PRIMITIVES, STEPS, CONCAT, Genotype
+from darts_rnn.genotypes import PRIMITIVES, STEPS, CONCAT, Genotype
 from torch.autograd import Variable
 from collections import namedtuple
-from darts.darts_rnn.model import DARTSCell, RNNModel
+from darts_rnn.model import DARTSCell, RNNModel
 
 
 class DARTSCellSearch(DARTSCell):
