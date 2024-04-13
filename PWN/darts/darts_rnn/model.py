@@ -11,7 +11,7 @@ from torch.autograd import Variable
 from model.spectral_rnn.cgRNN import RNNLayer
 
 INITRANGE = 0.04
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
+device = 'cuda:5' if torch.cuda.is_available() else 'cpu'
 
 class DARTSCell(nn.Module):
 

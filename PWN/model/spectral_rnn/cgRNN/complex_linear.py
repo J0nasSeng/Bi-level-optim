@@ -5,7 +5,6 @@ import torch.nn as nn
 
 import math
 
-
 class ComplexLinear(nn.Module):
 
     def __init__(self, dim_in, dim_out, fa=lambda x: x):

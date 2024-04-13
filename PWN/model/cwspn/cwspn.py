@@ -10,7 +10,7 @@ import numpy as np
 import pickle
 
 # Use GPU if avaiable
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
+device = 'cuda:5' if torch.cuda.is_available() else 'cpu'
 
 
 class CWSPN(SPN):

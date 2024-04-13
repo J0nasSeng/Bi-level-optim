@@ -8,6 +8,9 @@ from torch.autograd import Variable
 from darts.darts_cnn.operations import *
 from darts.darts_cnn.genotypes import PRIMITIVES
 from darts.darts_cnn.genotypes import Genotype
+
+device = 'cuda:5' if torch.cuda.is_available() else 'cpu'
+
 class MixedOp(nn.Module):
 
   def __init__(self, C, stride):
@@ -68,7 +71,7 @@ class Network(nn.Module):
     self._initialize_alphas()
 
   def new(self):
-    model_new = Network(self._C, self._num_classes, self._layers, self._criterion).cuda()
+    model_new = Network(self._C, self._num_classes, self._layers, self._criterion).to(device=device)
     for x, y in zip(model_new.arch_parameters(), self.arch_parameters()):
         x.data.copy_(y.data)
     return model_new
@@ -95,8 +98,8 @@ class Network(nn.Module):
     k = sum(1 for i in range(self._steps) for n in range(2+i))
     num_ops = len(PRIMITIVES)
 
-    self.alphas_normal = Variable(1e-3*torch.randn(k, num_ops).cuda(), requires_grad=True)
-    self.alphas_reduce = Variable(1e-3*torch.randn(k, num_ops).cuda(), requires_grad=True)
+    self.alphas_normal = Variable(1e-3*torch.randn(k, num_ops).to(device=device), requires_grad=True)
+    self.alphas_reduce = Variable(1e-3*torch.randn(k, num_ops).to(device=device), requires_grad=True)
     self._arch_parameters = [
       self.alphas_normal,
       self.alphas_reduce,

@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 import torch
 
 
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
+device = 'cuda:5' if torch.cuda.is_available() else 'cpu'
 
 
 class Model(ABC):

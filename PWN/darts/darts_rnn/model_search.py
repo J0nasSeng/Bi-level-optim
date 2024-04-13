@@ -6,6 +6,7 @@ from torch.autograd import Variable
 from collections import namedtuple
 from darts.darts_rnn.model import DARTSCell, RNNModel
 
+device = 'cuda:5' if torch.cuda.is_available() else 'cpu'
 
 class DARTSCellSearch(DARTSCell):
 
@@ -24,8 +25,8 @@ class DARTSCellSearch(DARTSCell):
     for i in range(STEPS):
 
       ###### Test multiple connections ########
-      raw_out = torch.zeros(states.shape).cuda()
-      aux_out = torch.zeros(x.shape).cuda()
+      raw_out = torch.zeros(states.shape).to(device=device)
+      aux_out = torch.zeros(x.shape).to(device=device)
       for idx,state in enumerate(states):
 
         raw_out[idx],h = self.layer[i](state)
@@ -76,11 +77,11 @@ class RNNModelSearch(RNNModel):
     def _initialize_arch_parameters(self):
       k = sum(i for i in range(1, STEPS+1))
       #weights_data = torch.randn(k, len(PRIMITIVES)).mul_(1e-3) #random arch init?
-      weights_data = Variable(1e-3 * torch.randn(k, len(PRIMITIVES)).cuda(), requires_grad=True)
+      weights_data = Variable(1e-3 * torch.randn(k, len(PRIMITIVES)).to(device=device), requires_grad=True)
       weights_data_aux = weights_data.requires_grad_()
-      #self.weights = weights_data_aux.cuda()
+      #self.weights = weights_data_aux.to(device=device)
       self.weights = weights_data
-      #self.weights = Variable(weights_data.cuda(), requires_grad=True)
+      #self.weights = Variable(weights_data.to(device=device), requires_grad=True)
       self._arch_parameters = [self.weights]
       for rnn in self.rnns:
         rnn.weights = self.weights

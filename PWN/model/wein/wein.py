@@ -10,7 +10,7 @@ import datetime as dt
 import pickle
 
 # Use GPU if avaiable
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
+device = 'cuda:3' if torch.cuda.is_available() else 'cpu'
 
 
 class WEin(SPN):

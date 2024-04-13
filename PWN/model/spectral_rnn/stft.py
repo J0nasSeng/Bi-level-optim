@@ -9,7 +9,7 @@ if TYPE_CHECKING:
 
 
 # Use GPU if avaiable
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
+device = 'cuda:5' if torch.cuda.is_available() else 'cpu'
 
 
 # We must make this a module and a class, so that it can be part of ModuleLists etc.
@@ -26,7 +26,7 @@ class STFT(nn.Module):
         self.onesided = onesided
         self.normalize_fft = config.normalize_fft
 
-        self.sigma = nn.Parameter(torch.full((1,), 0.7))  # Init to 0.7 as in paper
+        self.sigma = nn.Parameter(torch.full((1,), 0.7)).to(device)  # Init to 0.7 as in paper
         self.config = config
 
     @property
@@ -44,11 +44,12 @@ class STFT(nn.Module):
                               window=self.window, pad_mode=self.pad_mode, onesided=self.onesided,
                               return_complex=True, normalized=self.normalize_fft)[:, :self.value_dim]
         else:
+
             if self.config.removed_freqs > 0:
                 zero_freqs = torch.zeros((x.shape[0], self.config.removed_freqs, x.shape[2])).to(device)
                 x = torch.cat([x, zero_freqs], dim=1)
 
-            #print(x.real.min())
+            #print(x.shape)
             return torch.istft(x, n_fft=self.n_fft, hop_length=self.hop_length, win_length=self.win_size,
                                window=self.window, onesided=self.onesided, return_complex=False,
-                               normalized=self.normalize_fft)
+                               normalized=self.normalize_fft, center=False)

@@ -61,11 +61,11 @@ parser.add_argument('--seed', type=int, default=13, help='random seed')
 parser.add_argument('--grad_clip', type=float, default=5, help='gradient clipping')
 parser.add_argument('--train_portion', type=float, default=0.5, help='portion of training data')
 parser.add_argument('--unrolled', action='store_true', default=False, help='use one-step unrolled validation loss')
-parser.add_argument('--arch_learning_rate', type=float, default=3e-4 , help='learning rate for arch encoding') #3e-4 standard
+parser.add_argument('--arch_learning_rate', type=float, default=3e-4, help='learning rate for arch encoding') #3e-4 standard
 parser.add_argument('--arch_weight_decay', type=float, default=1e-3, help='weight decay for arch encoding')
 args = parser.parse_args()
 
-args.save = 'search-{}-{}'.format(args.save, time.strftime("%Y%m%d-%H%M%S"))
+args.save = 'search-m4yearly-archlr=3e-4-{}-{}'.format(args.save, time.strftime("%Y%m%d-%H%M%S"))
 utils.create_exp_dir(args.save, scripts_to_save=glob.glob('*.py'))
 
 log_format = '%(asctime)s %(message)s'
@@ -146,7 +146,7 @@ def main(rand):
 
 ###################################  Load  Data ########################################################################
 
-  m4_key = "Quarterly"
+  m4_key = "Yearly"
   m4_settings = {
     'Hourly': {'window_size': 24, 'fft_compression': 2, 'context_timespan': int(20 * 24),
                'prediction_timespan': int(2 * 24), 'timespan_step': int(.5 * 24)},  # 700 Min Context
