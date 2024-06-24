@@ -73,6 +73,10 @@ class SpectralGRUNet(nn.Module):
         self.stft = STFT(fft_compression, window_size, overlap, True, device)
     
     def forward(self, x, y):
+        # keeps shapes for prediction (no semantic meaning)
+        num_samples = y.shape[1]
+        num_samples_cmplx = self.stft(y.squeeze()).shape[-1]
+
         x = self.stft(x.squeeze()) # B x N x T
         x = torch.cat([x.real, x.imag], dim=1).swapaxes(-2, -1) # B x T x 2N
         
@@ -82,10 +86,10 @@ class SpectralGRUNet(nn.Module):
 
         out = out @ self.w.T + self.b
 
-        out = torch.complex(out[:, :, :4], out[:, :, 4:]).swapaxes(-2, -1)
+        out_dec = torch.complex(out[:, :, :4], out[:, :, 4:]).swapaxes(-2, -1)
         
-        out = self.stft(out, reverse=True)
-        return out[:, -6:]
+        out = self.stft(out_dec, reverse=True)
+        return out[:, -num_samples:], out_dec[:, :, -num_samples_cmplx:] # TODO: check if this is correct
 
 #input_size = 1
 #hidden_size = 128

@@ -193,11 +193,10 @@ class PWN(Model):
                 srnn_optimizer.zero_grad()
                 westimator_optimizer.zero_grad()
 
-                prediction = self.srnn(batch_x, batch_y)
-                # TODO: Here an error still occurs. My conjecture: Since we no longer have 4 features (1 instead), the shape of the SPN weights and input does not match.
-                #   Find solution to fix. Probably something in the SPN must be changed for this.
-                prediction_ll, w_in = self.call_westimator(batch_westimator_x.unsqueeze(-1), prediction.unsqueeze(-1) # TODO: Not sure about the unsqueeze operation here!
-                                        if self.train_rnn_w_ll and not self.always_detach else prediction.detach())
+                prediction, coeffs = self.srnn(batch_x, batch_y)
+                #coeffs = torch.cat([coeffs.real, coeffs.imag], dim=-1)
+                prediction_ll, w_in = self.call_westimator(batch_westimator_x, coeffs.reshape(coeffs.shape[0], -1) # TODO: Check if this is correct
+                                        if self.train_rnn_w_ll and not self.always_detach else coeffs.reshape(coeffs.shape[0], -1).detach())
 
                 #if type(self.srnn) == TransformerPredictor:
                 #    num_to_cut = int(prediction_raw.shape[1]/3)

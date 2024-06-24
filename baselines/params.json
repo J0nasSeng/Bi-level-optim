@@ -1,0 +1,56 @@
+{
+    "M4_Yearly": {
+        "numEpochs": 15000,
+        "batchsize": 256,
+        "fftWinSize": 6,
+        "fftComp": 1,
+        "pwnLR": 0.001,
+        "contexttime": 24,
+        "predictiontime": 6
+    },
+    "M4_Monthly": {
+        "numEpochs": 15000,
+        "batchsize": 256,
+        "fftWinSize": 6,
+        "fftComp": 1,
+        "pwnLR": 0.001,
+        "contexttime": 24,
+        "predictiontime": 18
+    },
+    "M4_Weekly": {
+        "numEpochs": 15000,
+        "batchsize": 256,
+        "fftWinSize": 6,
+        "fftComp": 1,
+        "pwnLR": 0.001,
+        "contexttime": 24,
+        "predictiontime": 14
+    },
+    "M4_Hourly": {
+        "numEpochs": 15000,
+        "batchsize": 256,
+        "fftWinSize": 6,
+        "fftComp": 1,
+        "pwnLR": 0.001,
+        "contexttime": 24,
+        "predictiontime": 48
+    },
+    "M4_Daily": {
+        "numEpochs": 15000,
+        "batchsize": 256,
+        "fftWinSize": 6,
+        "fftComp": 1,
+        "pwnLR": 0.001,
+        "contexttime": 24,
+        "predictiontime": 14
+    },
+    "M4_Quarterly": {
+        "numEpochs": 15000,
+        "batchsize": 256,
+        "fftWinSize": 6,
+        "fftComp": 1,
+        "pwnLR": 0.001,
+        "contexttime": 24,
+        "predictiontime": 8
+    }
+}
