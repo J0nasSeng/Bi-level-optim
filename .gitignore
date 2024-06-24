@@ -1,0 +1,4 @@
+__pycache__
+PWN/res
+PWN/data_cache.pkl
+*.pyc
