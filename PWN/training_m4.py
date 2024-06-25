@@ -153,7 +153,7 @@ for i, (data_source, preprocessing, model, evaluation_metrics, plots, load, use_
 
     if load is None:
         print('Training model...')
-        model.train(train_x, train_y, test_x, test_y, embedding_sizes,batch_size=256, epochs=10)
+        model.train(train_x, train_y, test_x, test_y, embedding_sizes,batch_size=256, epochs=1)
         print(f'--- Training finished after {(datetime.now() - start_time).microseconds} microseconds ---')
 
     else:
@@ -162,14 +162,24 @@ for i, (data_source, preprocessing, model, evaluation_metrics, plots, load, use_
         model.load(model_filepath)
 
     model_filepath = f'{model_base_path}{experiment_id}'
-    model.save(model_filepath)
+    #model.save(model_filepath)
     print(f'Model saved to {model_filepath}')
 
     test_x = {key: val for key, val in test_x.items() if len(val) > 0}
     test_y = {key: val for key, val in test_y.items() if len(val) > 0}
     test_y_values = {key: val for key, val in test_y_values.items() if len(val) > 0}
 
-    predictions = model.predict(test_x, mpe=plots['mpe'], pred_label='test_pred')
+    #predictions = model.predict(test_x, mpe=plots['mpe'], pred_label='test_pred')
+    tx = [torch.from_numpy(v) for v in test_x.values()]
+    ty = [torch.from_numpy(v) for v in test_y.values()]
+    tx, ty = torch.stack(tx).squeeze()[:, :, -1].to(device), torch.stack(ty).squeeze()[:, :, -1].to(device)
+    predictions, _ = model.predict_v2(tx.to(torch.float32), ty.to(torch.float32))
+    smape_metric = lambda out, label: 2 * (torch.abs(out - label) /
+                                                  (torch.abs(out) +
+                                                   torch.abs(label))).mean(axis=1).mean()
+    print(predictions)
+    print(ty)
+    print(f'SMAPE={smape_metric(predictions, ty).item()}')
     print('Test predictions done')
 
     if plots['train']:

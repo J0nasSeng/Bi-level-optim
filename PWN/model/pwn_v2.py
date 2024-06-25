@@ -350,9 +350,9 @@ class PWN(Model):
             plt.savefig('res/plots/0_PWN_LLWeightWarmup')
 
     @torch.no_grad()
-    def predict(self, x, batch_size=1024, pred_label='', mpe=False):
+    def predict(self, x, y, batch_size=1024, pred_label='', mpe=False):
 
-        predictions, f_c = self.srnn(x, batch_size, pred_label=pred_label, return_coefficients=True)
+        predictions, f_c = self.srnn(x, y)
 
         x_ = {key: x_[:, :, -1] for key, x_ in x.items()}
 
@@ -375,6 +375,19 @@ class PWN(Model):
 
         else:
             return predictions, ll
+
+    @torch.no_grad()
+    def predict_v2(self, x, y, batch_size=1024):
+        preds, lls = [], []
+        num_iters = x.shape[0] // batch_size + 1
+        for i in range(num_iters):
+            s, e = i*batch_size, (i + 1) * batch_size
+            predictions, f_c = self.srnn(x[s:e, :], y[s:e, :])
+            batch_westimator_x, batch_westimator_y = self.westimator.prepare_input(x[s:e, :], y[s:e, :])
+            prediction_ll, w_in = self.call_westimator(batch_westimator_x, f_c.reshape(f_c.shape[0], -1))
+            preds.append(predictions)
+            lls.append(prediction_ll)
+        return torch.cat(preds), torch.cat(lls)
 
     def save(self, filepath):
         self.srnn.save(filepath)
