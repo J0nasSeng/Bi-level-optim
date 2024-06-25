@@ -153,7 +153,7 @@ for i, (data_source, preprocessing, model, evaluation_metrics, plots, load, use_
 
     if load is None:
         print('Training model...')
-        model.train(train_x, train_y, test_x, test_y, embedding_sizes,batch_size=256, epochs=1000)
+        model.train(train_x, train_y, test_x, test_y, embedding_sizes,batch_size=256, epochs=10)
         print(f'--- Training finished after {(datetime.now() - start_time).microseconds} microseconds ---')
 
     else:

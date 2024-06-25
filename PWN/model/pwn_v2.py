@@ -30,7 +30,7 @@ def load_arch_params(srnn=True):
 
 class PWN(Model):
 
-    def __init__(self, hidden_size, output_size, fft_compression, window_size, overlap, device, c_config: CWSPNConfig, num_srnn_layers=1, train_spn_on_gt=True,
+    def __init__(self, hidden_size, output_size, fft_compression, window_size, overlap, device, c_config: CWSPNConfig, num_srnn_layers=2, train_spn_on_gt=True,
                  train_spn_on_prediction=False, train_rnn_w_ll=False, weight_mse_by_ll=None, always_detach=False,
                  westimator_early_stopping=5, step_increase=False, westimator_stop_threshold=.5,
                  westimator_final_learn=2, ll_weight=0.5, ll_weight_inc_dur=20, use_transformer=False, use_maf=False,
@@ -98,13 +98,14 @@ class PWN(Model):
         else:
             p_base_loss = lambda out, label: nn.MSELoss(reduction='none')(out, label).mean(axis=1)
 
-        srnn_parameters = list(self.srnn.parameters())
+        srnn_parameters = self.srnn.parameters()
         westimator_parameters = self.westimator.parameters()
 
         #amt_param = sum([p.numel() for p in self.srnn.net.parameters()])
         #amt_param_w = sum([p.numel() for p in self.westimator.parameters()])
 
-        srnn_optimizer = torch.optim.RMSprop(srnn_parameters, lr=lr, alpha=0.9)
+        #srnn_optimizer = torch.optim.RMSprop(srnn_parameters, lr=lr, alpha=0.9)
+        srnn_optimizer = torch.optim.Adam(srnn_parameters, lr=0.001)
         westimator_optimizer = torch.optim.Adam(westimator_parameters, lr=1e-4)
 
         if self.train_rnn_w_ll:
@@ -157,7 +158,6 @@ class PWN(Model):
             for i, idx in enumerate(idx_batches):
                 batch_x, batch_y = x[idx].detach().clone(), y[idx, :].detach().clone()
                 batch_westimator_x, batch_westimator_y = self.westimator.prepare_input(batch_x, batch_y)
-
                 if self.train_spn_on_gt:
                     westimator_optimizer.zero_grad()
                     if not stop_cspn_training or epoch >= epochs - self.westimator_final_learn:
@@ -194,6 +194,7 @@ class PWN(Model):
                 westimator_optimizer.zero_grad()
 
                 prediction, coeffs = self.srnn(batch_x, batch_y)
+
                 #coeffs = torch.cat([coeffs.real, coeffs.imag], dim=-1)
                 prediction_ll, w_in = self.call_westimator(batch_westimator_x, coeffs.reshape(coeffs.shape[0], -1) # TODO: Check if this is correct
                                         if self.train_rnn_w_ll and not self.always_detach else coeffs.reshape(coeffs.shape[0], -1).detach())
@@ -227,6 +228,7 @@ class PWN(Model):
                     srnn_loss = p_loss
                     l_loss = 0
 
+                    srnn_loss.backward()
                     srnn_optimizer.step()
 
                 if self.train_spn_on_prediction:
@@ -275,7 +277,7 @@ class PWN(Model):
                           f'Avg. WCSPN Loss: {westimator_loss_e / (i + 1)} '
                           f'Avg. SRNN Loss: {srnn_loss_e / (i + 1)}')
 
-            lr_scheduler.step()
+            #lr_scheduler.step()
 
             if epoch < self.ll_weight_inc_dur and self.train_rnn_w_ll:
                 if self.step_increase:
