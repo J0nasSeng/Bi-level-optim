@@ -1,5 +1,5 @@
 from .spectral_rnn.manifold_optimization import ManifoldOptimizer
-from .transformer import TransformerPredictor, TransformerConfig
+from .transformer import TransformerPredictor, TransformerConfig, TransformerNet
 from .maf import MAFEstimator
 from .cwspn import CWSPN, CWSPNConfig
 from .model import Model
@@ -39,9 +39,23 @@ class PWN(Model):
         assert train_spn_on_gt or train_spn_on_prediction
         assert not train_rnn_w_ll or train_spn_on_gt
 
-        self.srnn = SpectralGRUNet(hidden_size, output_size, device, num_srnn_layers, fft_compression, window_size, overlap).to(device) if not use_transformer else TransformerPredictor(
-            TransformerConfig(normalize_fft=True, window_size=window_size,
-                              fft_compression=fft_compression))
+        if not use_transformer:
+            self.srnn = SpectralGRUNet(hidden_size, output_size, device, num_srnn_layers, fft_compression, window_size, overlap).to(device) 
+        else:
+            trans_cfg = TransformerConfig(normalize_fft=True, window_size=window_size,
+                              fft_compression=fft_compression)
+            trans_cfg.step_width = int(window_size * overlap)
+            trans_cfg.value_dim = window_size // 2 + 1
+
+            trans_cfg.compressed_value_dim = trans_cfg.value_dim // fft_compression
+            trans_cfg.removed_freqs = trans_cfg.value_dim - trans_cfg.compressed_value_dim
+            trans_cfg.input_dim = trans_cfg.compressed_value_dim
+            self.srnn = TransformerNet(trans_cfg, trans_cfg.input_dim * 1, trans_cfg.hidden_dim,
+                                  trans_cfg.input_dim * 1, trans_cfg.q, trans_cfg.k, trans_cfg.heads,
+                                  trans_cfg.num_enc_dec, attention_size=trans_cfg.attention_size,
+                                  dropout=trans_cfg.dropout, chunk_mode=trans_cfg.chunk_mode, pe=trans_cfg.pe,
+                                  complex=trans_cfg.is_complex, native_complex=trans_cfg.native_complex).to(device)
+
         self.westimator = CWSPN(c_config) if not use_maf else MAFEstimator()
 
         self.train_spn_on_gt = train_spn_on_gt
@@ -63,7 +77,7 @@ class PWN(Model):
 
     def train(self, dataloader, epochs=70, lr=0.004, lr_decay=0.97):
         device = self.device
-        if type(self.srnn) == TransformerPredictor:
+        if type(self.srnn) == TransformerNet:
             lr /= 10
 
         self.westimator.stft_module = self.srnn.stft
@@ -387,7 +401,6 @@ class PWN(Model):
                                                                            (2 if self.westimator.use_stft else 1),)))
             self.westimator.args.param_provider.sum_params = sum_params
             self.westimator.args.param_provider.leaf_params = leaf_params
-
             return self.westimator.spn(y_), y_
         else:
             val_in = torch.cat([x, y_], dim=1).reshape((x.shape[0], -1))

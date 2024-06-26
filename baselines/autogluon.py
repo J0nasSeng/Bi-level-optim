@@ -46,7 +46,7 @@ def main(rand):
     df = pd.read_csv("https://autogluon.s3.amazonaws.com/datasets/timeseries/m4_yearly/test.csv")
     path = 'yearly'
     evm="SMAPE"
-  elif args.key == 'M4_Quaterly':
+  elif args.key == 'M4_Quarterly':
     df = pd.read_csv("https://autogluon.s3.amazonaws.com/datasets/timeseries/m4_quarterly/test.csv")
     path = 'quarterly'
     evm = "SMAPE"

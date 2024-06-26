@@ -225,7 +225,7 @@ class TransformerNet(Transformer):
             self.amt_prediction_samples = y.shape[1]
             self.amt_prediction_windows = self.stft(y).shape[-1]
 
-        x_ = self.stft(x[:, :, -1]).swapaxes(-2, -1)
+        x_ = self.stft(x).swapaxes(-2, -1)
 
         if not self.complex:
             x_ = torch.cat([x_.real, x_.imag], dim=-1)
@@ -234,7 +234,6 @@ class TransformerNet(Transformer):
 
         if not self.complex:
             f_c = torch.complex(f_c[:, :, :self.d_output // 2], f_c[:, :, self.d_output // 2:])
-
         prediction = self.stft(f_c.swapaxes(-2, -1), reverse=True)[:, -self.amt_prediction_samples:]
 
-        return prediction, f_c if return_coefficients else prediction
+        return prediction, f_c

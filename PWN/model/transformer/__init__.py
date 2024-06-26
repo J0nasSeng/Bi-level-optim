@@ -1,2 +1,2 @@
-from .transformer_predictor import TransformerPredictor
+from .transformer_predictor import TransformerPredictor, TransformerNet
 from .transformer_config import TransformerConfig

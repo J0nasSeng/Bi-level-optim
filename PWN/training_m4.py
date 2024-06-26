@@ -123,9 +123,9 @@ dataset.prepare()
 dataloader = DataLoader(dataset.train_data, batch_size=256, shuffle=True)
 model = PWNv2(hidden_size, output_size, m4_settings[m4_key]['fft_compression'], m4_settings[m4_key]['window_size'],
               0.5, device, config_c, num_srnn_layers=2, train_spn_on_gt=False, train_spn_on_prediction=True,
-              smape_target=True)
+              smape_target=True, use_transformer=True)
 
-model.train(dataloader, epochs=1000)
+model.train(dataloader, epochs=100)
 
 test_loader = DataLoader(dataset.test_data, batch_size=1024)
 
