@@ -12,9 +12,9 @@ from model.transformer import TransformerConfig
 import pickle
 from datetime import datetime
 import torch
-
-import numpy as np
-from darts.darts_rnn.model_search import RNNModelSearch
+from data_source import M4Dataset
+from util.losses import SMAPE
+from torch.utils.data import DataLoader
 
 
 plot_base_path = 'res/plots/'
@@ -54,7 +54,7 @@ config_c.rg_split_recursion = 2
 config_c.gauss_min_sigma = 1e-4
 config_c.gauss_max_sigma = 1. * 4
 config_c.use_rationals = True
-config_c.use_searched_cwspn = True #Choose if you want to use architecture searched cwspn
+config_c.use_searched_cwspn = False #Choose if you want to use architecture searched cwspn
 
 config_t = TransformerConfig()
 
@@ -105,312 +105,34 @@ solar_timespan_step = 10*24
 
 #Define experiment to run, ReadM4 requieres the m4key as an additional argument
 device = torch.device('cuda:0')
-experiments = [
-  (ReadM4(m4_key), ZScoreNormalization((0,), 3, 2, [True, True, True, False], min_group_size=0,
-                                      context_timespan=int(m4_settings[m4_key]['context_timespan']), prediction_timespan=int(m4_settings[m4_key]['prediction_timespan']),
-                                      timespan_step=int(m4_settings[m4_key]['timespan_step']), single_group=False, multivariate=False, retail=False),
-  PWNv2(hidden_size, output_size, m4_settings[m4_key]['fft_compression'], m4_settings[m4_key]['window_size'], 0.5, device,
-        config_c, train_spn_on_gt=False, train_spn_on_prediction=True, train_rnn_w_ll=False,
-         always_detach=True,use_transformer=False,smape_target=True),
-  [SMAPE(),CorrelationError(), MAE(), MSE(), RMSE()],
-  {'train': False, 'reversed': False, 'll': False, 'single_ll': False, 'mpe': False},
-  None, False)
-]
+#experiments = [
+#  (ReadM4(m4_key), ZScoreNormalization((0,), 3, 2, [True, True, True, False], min_group_size=0,
+#                                      context_timespan=int(m4_settings[m4_key]['context_timespan']), prediction_timespan=int(m4_settings[m4_key]['prediction_timespan']),
+#                                      timespan_step=int(m4_settings[m4_key]['timespan_step']), single_group=False, multivariate=False, retail=False),
+#  PWNv2(hidden_size, output_size, m4_settings[m4_key]['fft_compression'], m4_settings[m4_key]['window_size'], 0.5, device,
+#        config_c, train_spn_on_gt=False, train_spn_on_prediction=True, train_rnn_w_ll=False,
+#         always_detach=True,use_transformer=False,smape_target=True),
+#  [SMAPE(),CorrelationError(), MAE(), MSE(), RMSE()],
+#  {'train': False, 'reversed': False, 'll': False, 'single_ll': False, 'mpe': False},
+#  None, False)
+#]
 
+dataset = M4Dataset()
+dataset.prepare()
 
-for i, (data_source, preprocessing, model, evaluation_metrics, plots, load, use_cached) in enumerate(experiments):
-    print(f'Starting experiment {i}')
+dataloader = DataLoader(dataset.train_data, batch_size=256, shuffle=True)
+model = PWNv2(hidden_size, output_size, m4_settings[m4_key]['fft_compression'], m4_settings[m4_key]['window_size'],
+              0.5, device, config_c, num_srnn_layers=2, train_spn_on_gt=False, train_spn_on_prediction=True,
+              smape_target=True)
 
-    start_time = datetime.now()
-    model_name = f'{model.identifier}-{data_source.get_identifier()}'
-    experiment_id = f'{start_time.strftime("%m_%d_%Y_%H_%M_%S")}__{model_name}'
+model.train(dataloader, epochs=1000)
 
-    if not use_cached:
-        print('Getting fresh data...')
-        data = data_source.data
+test_loader = DataLoader(dataset.test_data, batch_size=1024)
 
-        print(f'Received {len(data)} rows of data')
-        print(f'--- Query finished after {(datetime.now() - start_time).microseconds} microseconds ---')
+preds, lls, gt = model.predict_v2(dataloader)
 
-        train_x, train_y, test_x, test_y, column_names, embedding_sizes, last_sequence_labels = \
-            preprocessing.apply(data, data_source, manual_split=True)
+score = SMAPE()
 
-        train_y_values = {key: y[..., -1] if len(y) > 0 else y for key, y in train_y.items()}
-        test_y_values = {key: y[..., -1] if len(y) > 0 else y for key, y in test_y.items()}
+result = score(gt, preds)
 
-        with open('data_cache.pkl', 'wb') as f:
-            pickle.dump((train_x, train_y, test_x, test_y, train_y_values, test_y_values,
-                         column_names, embedding_sizes, preprocessing), f)
-
-    else:
-        print('Loading cached data...')
-
-        with open('data_cache.pkl', 'rb') as f:
-            train_x, train_y, test_x, test_y, train_y_values, test_y_values, \
-            column_names, embedding_sizes, preprocessing = pickle.load(f)
-
-    print(f'--- Preprocessing finished after {(datetime.now() - start_time).microseconds} microseconds ---')
-
-    if load is None:
-        print('Training model...')
-        model.train(train_x, train_y, test_x, test_y, embedding_sizes,batch_size=256, epochs=1)
-        print(f'--- Training finished after {(datetime.now() - start_time).microseconds} microseconds ---')
-
-    else:
-        print('Loading model...')
-        model_filepath = f'{model_base_path}{load}'
-        model.load(model_filepath)
-
-    model_filepath = f'{model_base_path}{experiment_id}'
-    #model.save(model_filepath)
-    print(f'Model saved to {model_filepath}')
-
-    test_x = {key: val for key, val in test_x.items() if len(val) > 0}
-    test_y = {key: val for key, val in test_y.items() if len(val) > 0}
-    test_y_values = {key: val for key, val in test_y_values.items() if len(val) > 0}
-
-    #predictions = model.predict(test_x, mpe=plots['mpe'], pred_label='test_pred')
-    tx = [torch.from_numpy(v) for v in test_x.values()]
-    ty = [torch.from_numpy(v) for v in test_y.values()]
-    tx, ty = torch.stack(tx).squeeze()[:, :, -1].to(device), torch.stack(ty).squeeze()[:, :, -1].to(device)
-    predictions, _ = model.predict_v2(tx.to(torch.float32), ty.to(torch.float32))
-    smape_metric = lambda out, label: 2 * (torch.abs(out - label) /
-                                                  (torch.abs(out) +
-                                                   torch.abs(label))).mean(axis=1).mean()
-    print(predictions)
-    print(ty)
-    print(f'SMAPE={smape_metric(predictions, ty).item()}')
-    print('Test predictions done')
-
-    if plots['train']:
-        train_predictions = model.predict(train_x, mpe=plots['mpe'], pred_label='train_pred')
-
-        print('Train predictions done')
-
-    if type(predictions) is tuple:
-        if plots['mpe']:
-            predictions, likelihoods, likelihoods_mpe, predictions_mpe = predictions
-
-            if plots['train']:
-                train_predictions, train_likelihoods, \
-                    train_likelihoods_mpe, train_predictions_mpe = train_predictions
-        else:
-            predictions, likelihoods = predictions
-
-            if plots['train']:
-                train_predictions, train_likelihoods = train_predictions
-
-        if plots['ll']:
-            likelihoods_gt = model.westimator.predict({key: x_[:, :, -1] for key, x_ in test_x.items()}, test_y_values)
-            ll_length = len(next(iter(likelihoods_gt.values())))
-
-        if plots['train']:
-            likelihoods_gt_train = model.westimator.predict({key: x_[:, :, -1] for key, x_ in train_x.items()}, train_y_values)
-
-    else:
-        likelihoods = None
-        train_likelihoods = None
-
-    index_test = {key: np.array([list(range(p.shape[-1]))]) for key, p in predictions.items()}
-
-    if plots['train']:
-        index_train = {key: np.array([list(range(p.shape[-1]))]) for key, p in train_predictions.items()}
-
-    if plots['reversed']:
-        predictions_reversed = preprocessing.reverse(predictions)
-        test_y_values_reversed = preprocessing.reverse(test_y_values)
-
-        if plots['train']:
-            train_predictions_reversed = preprocessing.reverse(train_predictions)
-            train_y_values_reversed = preprocessing.reverse(train_y_values)
-
-    else:
-        print('Note: As "reversed" is deactivated, '
-              'MSE will be calculated on the preprocessed instead of the original values')
-
-    plot_filepath_base = f'{plot_base_path}{experiment_id}'
-
-    eval_results = {}
-    for eval_metric in evaluation_metrics:
-        metric_name = eval_metric.__class__.__name__
-        result_test = eval_metric.calculate(predictions_reversed, test_y_values_reversed, likelihoods) \
-            if plots['reversed'] else eval_metric.calculate(predictions, test_y_values, likelihoods)
-
-        eval_results[metric_name] = result_test
-        # print(f'{metric_name}: {result_test}')
-
-        if type(eval_metric) in (MSE, SMAPE) and plots['mpe']:
-            try:
-                if reversed:
-                    mpe_pred_reversed = preprocessing.reverse(predictions_mpe)
-
-                    mpe_error = eval_metric.calculate(mpe_pred_reversed, test_y_values_reversed, likelihoods)
-                else:
-                    mpe_error = eval_metric.calculate(predictions_mpe, test_y_values, likelihoods)
-
-                print(f'{metric_name} MPE Average: {sum([x for x in mpe_error.values()]) / len(mpe_error)}')
-
-                if plots['train']:
-                    if reversed:
-                        mpe_pred_reversed_train = preprocessing.reverse(train_predictions_mpe)
-
-                        mpe_error_train = eval_metric.calculate(mpe_pred_reversed_train,
-                                                                train_y_values_reversed, None)
-                    else:
-                        mpe_error_train = eval_metric.calculate(train_predictions_mpe, train_y_values, None)
-
-                    print(f'{metric_name} MPE Average Train: '
-                          f'{sum([x for x in mpe_error_train.values()]) / len(mpe_error_train)}')
-
-            except NameError:
-                print('MPE not avaiable!')
-
-        if type(result_test) is dict:
-            print(f'{metric_name} Average: {sum([x for x in result_test.values()]) / len(result_test)}')
-        else:
-            print(f'{metric_name} Average: {result_test.mean()}')
-
-            from collections.abc import Iterable
-
-            if isinstance(result_test, Iterable):
-                import matplotlib.pyplot as plt
-
-                plt.clf()
-                plt.plot(sorted(result_test))
-                plt.savefig(f'{plot_filepath_base}_ce')
-                plt.clf()
-
-        if plots['train']:
-            result_train = eval_metric.calculate(train_predictions_reversed, train_y_values_reversed,
-                                                 train_likelihoods) if plots['reversed'] else \
-                eval_metric.calculate(train_predictions, train_y_values, train_likelihoods)
-            print(f'Train: {metric_name}: {result_train}')
-
-            if type(result_test) is dict:
-                print(f'Train {metric_name} Average: {sum([x for x in result_train.values()]) / len(result_test)}')
-            else:
-                print(f'Train {metric_name} Average: {result_train.mean()}')
-
-    print(f'--- Evaluation finished after {(datetime.now() - start_time).microseconds} microseconds ---')
-
-    rolling = 30
-
-    if plots['single_ll']:
-        print('Plotting single LL...')
-
-        cmp_plot(f'{experiment_id}: Test_PredictionLL', f'{plot_filepath_base}_ll_test',
-                 predictions, likelihoods, test_y_values, columns=6, rolling=2)
-        cmp_plot(f'{experiment_id}: Test_GroundTruthLL', f'{plot_filepath_base}_ll_test_gt',
-                 predictions, likelihoods_gt, test_y_values, columns=6, rolling=2)
-
-        if plots['train']:
-            cmp_plot(f'{experiment_id}: Train_PredictionLL', f'{plot_filepath_base}_ll_train',
-                     train_predictions, train_likelihoods, train_y_values)
-            cmp_plot(f'{experiment_id}: Train_GroundTruthLL', f'{plot_filepath_base}_ll_train_gt',
-                     train_predictions, likelihoods_gt_train, train_y_values)
-
-    if plots['ll'] or plots['mpe']:
-        try:
-            p_all = {'All': np.concatenate([p for p in predictions.values()], axis=0)}
-            l_all = {'All': tuple((np.concatenate([l[i] for l in likelihoods.values()], axis=0)
-                                   for i in range(ll_length)))}
-            l_all_gt = {'All': tuple((np.concatenate([l[i] for l in likelihoods_gt.values()], axis=0)
-                                      for i in range(ll_length)))}
-            y_all = {'All': np.concatenate([y for y in test_y_values.values()], axis=0)}
-
-            if plots['ll']:
-                print('Plotting LL...')
-
-                cmp_plot(f'{experiment_id}: Test_PredictionLL', f'{plot_filepath_base}_ll_test_all', p_all, l_all,
-                         y_all, columns=1, rolling=rolling)
-                cmp_plot(f'{experiment_id}: Test_PredictionLL', f'{plot_filepath_base}_ll_test_all_r', p_all, l_all,
-                         y_all, columns=1, rolling=rolling, sort_by=1)
-                cmp_plot(f'{experiment_id}: Test_GTLL', f'{plot_filepath_base}_ll_test_all_gt', p_all, l_all_gt, y_all,
-                         columns=1, rolling=rolling)
-
-            if plots['mpe']:
-                print('Plotting MPE...')
-
-                l_all_mpe = {'All': tuple((np.concatenate([l[i] for l in likelihoods_mpe.values()], axis=0)
-                                           for i in range(ll_length)))}
-                ll_plot(f'{experiment_id}: LL PLot', f'{plot_filepath_base}_ll_cmp', p_all, y_all, l_all, l_all_mpe,
-                        l_all_gt, rolling=rolling)
-
-            if plots['train']:
-                p_all = {'All': np.concatenate([p for p in train_predictions.values()], axis=0)}
-                l_all = {'All': tuple((np.concatenate([l[i] for l in train_likelihoods.values()], axis=0)
-                                       for i in range(ll_length)))}
-                l_all_gt = {
-                    'All': tuple((np.concatenate([l[i] for l in likelihoods_gt_train.values()], axis=0)
-                                  for i in range(ll_length)))}
-                y_all = {'All': np.concatenate([y for y in train_y_values.values()], axis=0)}
-
-                if plots['ll']:
-                    print('Plotting Train LL...')
-
-                    cmp_plot(f'{experiment_id}: Train_PredictionLL', f'{plot_filepath_base}_ll_train_all', p_all, l_all,
-                             y_all, columns=1, rolling=rolling)
-                    cmp_plot(f'{experiment_id}: Test_GTLL', f'{plot_filepath_base}_ll_train_all_gt', p_all, l_all_gt,
-                             y_all, columns=1, rolling=rolling)
-
-                if plots['mpe']:
-                    print('Plotting Train MPE...')
-
-                    l_all_mpe = {'All': tuple((np.concatenate([l[i] for l in train_likelihoods_mpe.values()],
-                                                              axis=0) for i in range(ll_length)))}
-                    ll_plot(f'{experiment_id}: LL Plot train', f'{plot_filepath_base}_ll_cmp_train',
-                            p_all, y_all, l_all, l_all_mpe, l_all_gt, rolling=rolling)
-        except NameError:
-            print('Skipped MPE and LL plots')
-
-    plot_single_group_detailed = data_source.plot_single_group_detailed or preprocessing.single_group
-
-    if plots['train']:
-        plot_filepath_train = f'{plot_filepath_base}_train'
-        plot_experiment(f'{experiment_id}: Train', plot_filepath_train,
-                        index_train, train_predictions, train_y_values,
-                        plot_single_group_detailed=plot_single_group_detailed)
-        print(f'Train plot saved to {plot_filepath_train}')
-
-        if plots['reversed']:
-            plot_filepath_train_unnormalized = f'{plot_filepath_base}_train_unnormalized'
-            plot_experiment(f'{experiment_id}: Train', plot_filepath_train_unnormalized,
-                            index_train, train_predictions_reversed,
-                            train_y_values_reversed,
-                            plot_single_group_detailed=plot_single_group_detailed)
-            print(f'Train plot unnormlized saved to {plot_filepath_train_unnormalized}')
-
-        if plots['mpe']:
-            plot_experiment(f'{experiment_id}: Train MPE', plot_filepath_train + '_mpe',
-                            index_train, train_predictions_mpe, train_y_values,
-                            plot_single_group_detailed=plot_single_group_detailed)
-            print(f'Train MPE plot saved to {plot_filepath_train + "_mpe"}')
-
-    plot_filepath_test = f'{plot_filepath_base}_test'
-    plot_experiment(f'{experiment_id}: Test', plot_filepath_test, index_test, predictions, test_y_values,
-                    plot_single_group_detailed=plot_single_group_detailed)
-    print(f'Test plot saved to {plot_filepath_test}')
-
-    if plots['mpe']:
-        try:
-            plot_experiment(f'{experiment_id}: Test MPE', plot_filepath_test + '_mpe', index_test, predictions_mpe,
-                            test_y_values,
-                            plot_single_group_detailed=plot_single_group_detailed)
-            print(f'Test MPE plot saved to {plot_filepath_test + "_mpe"}')
-        except NameError:
-            print('Skipped MPE plots')
-
-    if plots['reversed']:
-        plot_filepath_test_unnormalized = f'{plot_base_path}{experiment_id}_test_unnormalized'
-        plot_experiment(f'{experiment_id}: Test', plot_filepath_test_unnormalized,
-                        index_test, predictions_reversed, test_y_values_reversed,
-                        plot_single_group_detailed=plot_single_group_detailed)
-        print(f'Test plot unnormlized saved to {plot_filepath_test_unnormalized}')
-
-    experiment_filepath = f'{experiments_base_path}{experiment_id}'
-    save_experiment(experiment_filepath,
-                    (data_source, preprocessing, evaluation_metrics, eval_results,
-                     plot_filepath_base, model_filepath))
-    print(f'Experiment saved to {experiment_filepath}')
-
-    print(f'--- Experiment finished after {(datetime.now() - start_time).microseconds} microseconds ---')
+print(f"SMAPE={result.item()}")

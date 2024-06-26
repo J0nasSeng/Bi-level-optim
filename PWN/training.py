@@ -61,7 +61,7 @@ config_t = TransformerConfig()
 
 manual_split = True
 
-m4_key = 'Weekly'
+m4_key = 'Yearly'
 m4_settings = {
     'Hourly': {'window_size': 24, 'fft_compression': 2, 'context_timespan': int(20 * 24),
                'prediction_timespan': int(2 * 24), 'timespan_step': int(.5 * 24)},  # 700 Min Context
@@ -77,14 +77,14 @@ m4_settings = {
                'prediction_timespan': int(1 * 6), 'timespan_step': int(.5 * 6)}  # 13 Min Context
 }
 
-#config.window_size = m4_settings[m4_key]['window_size']#96#m4_settings[m4_key]['window_size']#96
-#config.fft_compression = m4_settings[m4_key]['fft_compression']#4#m4_settings[m4_key]['fft_compression']#4
+config.window_size = m4_settings[m4_key]['window_size']#96#m4_settings[m4_key]['window_size']#96
+config.fft_compression = m4_settings[m4_key]['fft_compression']#4#m4_settings[m4_key]['fft_compression']#4
 
 exchange_context_timespan = 6*30 #6*30
 exchange_prediction_timespan = 30
 exchange_timespan_step = 15 #20
-config.window_size = 60 #20
-config.fft_compression = 2 #2
+#config.window_size = 60 #20
+#config.fft_compression = 2 #2
 
 wiki_context_timespan = 6*30
 wiki_prediction_timespan = 30
@@ -103,11 +103,11 @@ solar_timespan_step = 10*24
 
 #Define experiment to run, ReadM4 requieres the m4key as an additional argument
 experiments = [
-  (ReadExchangePKL(), ZScoreNormalization((0,), 3, 2, [True, True, True, False], min_group_size=0,
-                                      context_timespan=int(exchange_context_timespan), prediction_timespan=int(exchange_prediction_timespan),
-                                      timespan_step=int(exchange_timespan_step), single_group=False, multivariate=False, retail=False),
+  (ReadM4(m4_key), ZScoreNormalization((0,), 3, 2, [True, True, True, False], min_group_size=0,
+                                      context_timespan=int(m4_settings[m4_key]['context_timespan']), prediction_timespan=int(m4_settings[m4_key]['prediction_timespan']),
+                                      timespan_step=int(m4_settings[m4_key]['timespan_step']), single_group=False, multivariate=False, retail=False),
   PWN(config, config_c, train_spn_on_gt=False, train_spn_on_prediction=True, train_rnn_w_ll=False,
-         always_detach=True,use_transformer=False,smape_target=False),
+         always_detach=True,use_transformer=True,smape_target=True),
   [SMAPE(),CorrelationError(), MAE(), MSE(), RMSE()],
   {'train': False, 'reversed': False, 'll': False, 'single_ll': False, 'mpe': False},
   None, False)
@@ -149,7 +149,7 @@ for i, (data_source, preprocessing, model, evaluation_metrics, plots, load, use_
 
     if load is None:
         print('Training model...')
-        model.train(train_x, train_y, test_x, test_y, embedding_sizes,batch_size=256, epochs=1000)
+        model.train(train_x, train_y, test_x, test_y, embedding_sizes,batch_size=256, epochs=10)
         print(f'--- Training finished after {(datetime.now() - start_time).microseconds} microseconds ---')
 
     else:

@@ -10,8 +10,8 @@ mse_limit = [-0.5, 8]  # * 0.05
 ll_limit = [-350, 70]
 plt.rcParams.update({'font.size': 32, 'figure.figsize': (60, 20), 'ps.useafm': False,
                      'pdf.use14corefonts': True, 'text.usetex': False})
-plt.rcParams['text.latex.preamble'] = [r'\usepackage{sansmath}',
-                                       r'\sansmath']  # Force sans-serif math mode (for axes labels)
+#plt.rcParams['text.latex.preamble'] = [r'\usepackage{sansmath}',
+#                                       r'\sansmath']  # Force sans-serif math mode (for axes labels)
 plt.rcParams['font.family'] = 'sans-serif'  # ... for regular text
 plt.rcParams['font.sans-serif'] = 'Helvetica, Avant Garde, Computer Modern Sans serif'  # Choose a nice font here
 

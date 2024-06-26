@@ -1,9 +1,10 @@
 #from aeon.datasets import load_forecasting
 import torch
-from torch.utils.data import TensorDataset, DataLoader, random_split
+#from torch.utils.data import TensorDataset, DataLoader, random_split
 import torch.nn as nn
-import torch.optim as optim
-import numpy as np
+#import torch.optim as optim
+#import numpy as np
+#from losses import SMAPE
 #from neuralforecast.losses.pytorch import SMAPE
 from .stft import STFT
 
@@ -44,19 +45,17 @@ def rand_uniform(shape, lower, upper, dtype=torch.float):
 #
 #            x_data.append(x)
 #            y_data.append(y)
-
-        
+#       
 #        self.data = TensorDataset(torch.from_numpy(np.array(x_data)), torch.from_numpy(np.array(y_data)))
 #        train_size = int(0.7 * len(self.data))
 #        test_size = len(self.data) - train_size
 #        self.train_data, self.test_data = random_split(self.data, [train_size, test_size])
 #
-    
+#   
 #dataset = M4Dataset()
 #dataset.prepare()
-
 #dataloader = DataLoader(dataset.train_data, batch_size=256, shuffle=True)
-
+#
 # 2. Define the GRU model
 class SpectralGRUNet(nn.Module):
     def __init__(self, hidden_size, output_size, device, num_layers=1, fft_compression=1, window_size=6, overlap=0.5):
@@ -97,7 +96,7 @@ class SpectralGRUNet(nn.Module):
 #num_layers = 2
 #device = torch.device('cuda:3')
 #
-#model = SpectralGRUNet(hidden_size, output_size, num_layers).to(device)
+#model = SpectralGRUNet(hidden_size, output_size, device, num_layers).to(device)
 ##criterion = nn.MSELoss()
 #criterion = SMAPE()
 #optimizer = optim.Adam(model.parameters(), lr=0.001)
@@ -124,10 +123,10 @@ class SpectralGRUNet(nn.Module):
 #        y_batch = y_batch.to(device)
 #
 #        # Forward pass
-#        outputs = model(x_batch, y_batch)
+#        outputs, _ = model(x_batch, y_batch)
 #        loss = criterion(outputs, y_batch.squeeze())
 #
-#        avg_loss += loss.item() #/ len(x_batch)
+#        avg_loss += loss.item() / len(dataloader)
 #        
 #        # Backward pass and optimization
 #        optimizer.zero_grad()

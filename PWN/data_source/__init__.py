@@ -5,3 +5,4 @@ from .read_exchange_pkl import ReadExchangePKL
 from .read_wiki_pkl import ReadWikipediaPKL
 from .read_m4 import ReadM4
 from .read_solar_pkl import ReadSolarPKL
+from .aeon_m4 import M4Dataset
