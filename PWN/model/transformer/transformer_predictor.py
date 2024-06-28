@@ -1,8 +1,9 @@
 from ..model import Model
 from .tst import Transformer
-from ..spectral_rnn.stft import STFT
+from ..srnn.stft import STFT
 from .transformer_config import TransformerConfig
 from ..spectral_rnn.cgRNN import clip_grad_value_complex_
+#from model import Model
 from util.plot import plot_experiment
 
 import torch
@@ -12,10 +13,6 @@ import numpy as np
 
 import pickle
 import math
-
-# Use GPU if avaiable
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
 
 class TransformerPredictor(Model):
 
@@ -198,6 +195,7 @@ class TransformerNet(Transformer):
                  v: int,
                  h: int,
                  N: int,
+                 device = None,
                  attention_size: int = None,
                  dropout: float = 0.3,
                  chunk_mode: str = 'chunk',
@@ -212,7 +210,9 @@ class TransformerNet(Transformer):
         self.complex = complex
         self.native_complex = native_complex
 
-        self.stft = STFT(config)
+        self.stft = STFT(config.fft_compression, config.window_size, config.overlap, True, device)
+        if device is not None:
+            self.stft = self.stft.to(device)
 
         self.amt_prediction_samples = None
         self.amt_prediction_windows = None
@@ -225,15 +225,22 @@ class TransformerNet(Transformer):
             self.amt_prediction_samples = y.shape[1]
             self.amt_prediction_windows = self.stft(y).shape[-1]
 
+        print(x.shape)
         x_ = self.stft(x).swapaxes(-2, -1)
+        print(x_.shape)
 
         if not self.complex:
             x_ = torch.cat([x_.real, x_.imag], dim=-1)
 
+
         f_c = super().forward(x_, self.amt_prediction_windows)[:, -self.amt_prediction_windows:]
+
+        print(f_c.shape)
 
         if not self.complex:
             f_c = torch.complex(f_c[:, :, :self.d_output // 2], f_c[:, :, self.d_output // 2:])
+
+
         prediction = self.stft(f_c.swapaxes(-2, -1), reverse=True)[:, -self.amt_prediction_samples:]
 
         return prediction, f_c

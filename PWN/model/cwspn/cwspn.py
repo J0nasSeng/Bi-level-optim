@@ -9,13 +9,10 @@ import numpy as np
 
 import pickle
 
-# Use GPU if avaiable
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
 
 class CWSPN(SPN):
 
-    def __init__(self, config: CWSPNConfig):
+    def __init__(self, config: CWSPNConfig, device):
         super(CWSPN, self).__init__(use_stft=True)
 
         self.rg = None
@@ -24,7 +21,7 @@ class CWSPN(SPN):
         self.weight_nn = None
         self.stft_module = None
         self.input_sizes = None
-
+        self.device = device
         self.num_sum_params = None
         self.num_leaf_params = None
 
@@ -50,7 +47,7 @@ class CWSPN(SPN):
 
         # Train
         for epoch in range(epochs):
-            idx_batches = torch.randperm(x.shape[0], device=device).split(batch_size)
+            idx_batches = torch.randperm(x.shape[0], device=self.device).split(batch_size)
 
             epoch_loss = 0
             for i, idx in enumerate(idx_batches):
@@ -84,7 +81,7 @@ class CWSPN(SPN):
             self.weight_nn.eval()
 
             ll_cond = []
-            idx_batches = torch.arange(x.shape[0], device=device).split(batch_size)
+            idx_batches = torch.arange(x.shape[0], device=self.device).split(batch_size)
             for i, idx in enumerate(idx_batches):
                 batch_x, batch_y = x[idx, :].detach().clone(), y[idx, :].detach().clone()
 
@@ -111,7 +108,7 @@ class CWSPN(SPN):
             self.weight_nn.eval()
 
             ll_cond = []
-            idx_batches = torch.arange(x.shape[0], device=device).split(batch_size)
+            idx_batches = torch.arange(x.shape[0], device=self.device).split(batch_size)
             for i, idx in enumerate(idx_batches):
                 batch_x, batch_y = x[idx, :].detach().clone(), y[idx, :].detach().clone()
 
@@ -191,7 +188,7 @@ class CWSPN(SPN):
 
             mpes = []
             mpes_r = []
-            idx_batches = torch.arange(x.shape[0], device=device).split(batch_size)
+            idx_batches = torch.arange(x.shape[0], device=self.device).split(batch_size)
             for i, idx in enumerate(idx_batches):
                 batch_x, batch_y = x[idx, :].detach(), y[idx, :].detach()
 
@@ -259,9 +256,9 @@ class CWSPN(SPN):
         self.args.gauss_min_sigma = self.config.gauss_min_sigma
         self.args.gauss_max_sigma = self.config.gauss_max_sigma
         self.args.param_provider = IndexParamProvider()
-        self.spn = RatSpn(1, region_graph=self.rg, name="spn", args=self.args).to(device)
+        self.spn = RatSpn(1, region_graph=self.rg, name="spn", args=self.args).to(self.device)
         self.spn.num_params()
 
         self.num_sum_params, self.num_leaf_params = self.spn.num_params_separately()
         self.weight_nn = WeigthNN(self.input_sizes[0] * (2 if self.use_stft else 1), self.num_sum_params,
-                                  self.num_leaf_params, self.config.use_rationals).to(device)
+                                  self.num_leaf_params, self.config.use_rationals).to(self.device)

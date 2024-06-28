@@ -5,12 +5,12 @@ import numpy as np
 
 class M4Dataset:
     
-    def __init__(self, train_len=24, test_len=6) -> None:
+    def __init__(self, train_len=24, test_len=6, subset='yearly') -> None:
         self.data = None
         self.norm_stats = {}
         self._train_len = train_len
         self._test_len = test_len
-        self.df = load_forecasting('m4_yearly_dataset', return_metadata=False)
+        self.df = load_forecasting(f'm4_{subset}_dataset', return_metadata=False)
 
     def prepare(self):
         x_data, y_data = [], []

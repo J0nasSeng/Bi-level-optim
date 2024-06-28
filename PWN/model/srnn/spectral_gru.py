@@ -77,6 +77,7 @@ class SpectralGRUNet(nn.Module):
         num_samples_cmplx = self.stft(y.squeeze()).shape[-1]
 
         x = self.stft(x.squeeze()) # B x N x T
+        stft_len = x.shape[1]
         x = torch.cat([x.real, x.imag], dim=1).swapaxes(-2, -1) # B x T x 2N
         
         h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(x.device)
@@ -85,7 +86,7 @@ class SpectralGRUNet(nn.Module):
 
         out = out @ self.w.T + self.b
 
-        out_dec = torch.complex(out[:, :, :4], out[:, :, 4:]).swapaxes(-2, -1)
+        out_dec = torch.complex(out[:, :, :stft_len], out[:, :, stft_len:]).swapaxes(-2, -1)
         
         out = self.stft(out_dec, reverse=True)
         return out[:, -num_samples:], out_dec[:, :, -num_samples_cmplx:] # TODO: check if this is correct
