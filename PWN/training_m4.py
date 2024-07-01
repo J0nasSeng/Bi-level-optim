@@ -33,14 +33,14 @@ config_c.rg_splits = 8
 config_c.rg_split_recursion = 2
 config_c.gauss_min_sigma = 1e-4
 config_c.gauss_max_sigma = 1. * 4
-config_c.use_rationals = True
+config_c.use_rationals = False # IMPORTANT: rationals package only supports one cuda device, delivers wrong results on device != 0!
 config_c.use_searched_cwspn = False #Choose if you want to use architecture searched cwspn
 
 config_t = TransformerConfig()
 
 manual_split = True
 
-dataset_key = 'm4_Hourly'
+dataset_key = 'm4_Yearly'
 hyperparams = {
     'm4_Hourly': {'window_size': 24, 'fft_compression': 2, 'context_timespan': int(20 * 24),
                'prediction_timespan': int(2 * 24), 'timespan_step': int(.5 * 24)},  # 700 Min Context
@@ -64,7 +64,7 @@ hyperparams = {
 
 #config.window_size = hyperparams[dataset_key]['window_size']#96#hyperparams[dataset_key]['window_size']#96
 #config.fft_compression = hyperparams[dataset_key]['fft_compression']#4#hyperparams[dataset_key]['fft_compression']#4
-use_transformer = True
+use_transformer = False
 hidden_size = 128 if use_transformer else 64
 output_size = 6
 learning_rate = 0.0004 if use_transformer else 0.004
@@ -92,7 +92,7 @@ solar_timespan_step = 10*24
 #config.fft_compression = hyperparams[dataset_key]['fft_compression']
 
 #Define experiment to run, ReadM4 requieres the m4key as an additional argument
-device = torch.device('cuda:3')
+device = torch.device('cuda:2') # IMPORTANT: rationals package only supports one cuda device, delivers wrong results on device != 0!
 
 m4_key = dataset_key[3:].lower()
 dataset = M4Dataset(train_len=hyperparams[dataset_key]['context_timespan'], test_len=hyperparams[dataset_key]['prediction_timespan'], subset=m4_key)
@@ -105,7 +105,7 @@ for s in seeds:
     dataloader = DataLoader(dataset.train_data, batch_size=256, shuffle=True)
     model = PWNv2(hidden_size, hyperparams[dataset_key]['prediction_timespan'], hyperparams[dataset_key]['fft_compression'], 
                   hyperparams[dataset_key]['window_size'], 0.5, device, config_c, num_srnn_layers=2, train_spn_on_gt=False, train_spn_on_prediction=True,
-                smape_target=True, use_transformer=use_transformer)
+                smape_target=True, use_transformer=use_transformer, train_rnn_w_ll=False)
 
     start_time = time.time()
     model.train(dataloader, epochs=epochs, lr=learning_rate)

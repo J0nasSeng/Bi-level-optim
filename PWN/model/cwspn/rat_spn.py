@@ -8,9 +8,6 @@ import model.cwspn.region_graph as region_graph
 from model.cwspn.utils import truncated_normal_
 
 
-# Use GPU if avaiable
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
 
 class SpnArgs(object):
     def __init__(self):
@@ -91,7 +88,7 @@ class NodeVector(nn.Module):
 
 
 class GaussVector(NodeVector):
-    def __init__(self, region, args, name, num_dims=0, rv_dim=2):  # rv_dim = 2
+    def __init__(self, region, args, name, device, num_dims=0, rv_dim=2):  # rv_dim = 2
         super().__init__(name)
         self.local_size = len(region)
         self.args = args
@@ -100,6 +97,7 @@ class GaussVector(NodeVector):
         self.num_dims = num_dims
         self.rv_dim = rv_dim
         self.np_means = None
+        self.device = device
         self.means = self.args.param_provider.grab_leaf_parameters(
             self.scope,
             args.num_gauss * self.rv_dim)
@@ -142,7 +140,7 @@ class GaussVector(NodeVector):
             my_sample = self.get_means()[case_num]
             # my_sample = sess.run(self.means)
         my_sample = my_sample[:, node_num]
-        full_sample = torch.zeros((self.num_dims, self.rv_dim)).to(device)
+        full_sample = torch.zeros((self.num_dims, self.rv_dim)).to(self.device)
         full_sample[self.scope] = my_sample
         return full_sample
 
@@ -294,7 +292,7 @@ class SumVector(NodeVector):
 
 
 class RatSpn(nn.Module):
-    def __init__(self, num_classes, region_graph, args=SpnArgs(), name=None):
+    def __init__(self, num_classes, region_graph, device, args=SpnArgs(), name=None):
         super().__init__()
         if name is None:
             name = str(id(self))
@@ -302,6 +300,7 @@ class RatSpn(nn.Module):
         self._region_graph = region_graph
         self.args = args
         self.num_classes = num_classes
+        self.device = device
 
         # dictionary mapping regions to tensor of sums/input distributions
         self._region_distributions = dict()
@@ -329,7 +328,7 @@ class RatSpn(nn.Module):
         for i, leaf_region in enumerate(rg_layers[0]):
             if self.args.dist == 'Gauss':
                 name = '{}_gauss_{}'.format(self.name, i)
-                leaf_vector = GaussVector(leaf_region, self.args, name, num_dims=self.num_dims)
+                leaf_vector = GaussVector(leaf_region, self.args, name, self.device, num_dims=self.num_dims)
             elif self.args.dist == 'Bernoulli':
                 name = '{}_bernoulli_{}'.format(self.name, i)
                 leaf_vector = BernoulliVector(leaf_region, self.args, name, num_dims=self.num_dims)
@@ -389,7 +388,7 @@ class RatSpn(nn.Module):
     def reconstruct_batch(self, y_empty):
         batch_size = y_empty.shape[0]
 
-        marginalized = torch.ones(y_empty.shape[:2]).to(device)
+        marginalized = torch.ones(y_empty.shape[:2]).to(self.device)
         self.forward(torch.zeros_like(y_empty), marginalized=marginalized)
 
         max_idx_tensors = {}

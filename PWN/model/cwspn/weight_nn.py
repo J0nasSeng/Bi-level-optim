@@ -4,7 +4,7 @@ from rational.torch import Rational
 
 class WeigthNN(nn.Module):
 
-    def __init__(self, inp_size, num_sum_params, num_leaf_params, use_rationals=False):
+    def __init__(self, inp_size, num_sum_params, num_leaf_params, device, use_rationals=False):
         super(WeigthNN, self).__init__()
 
         self.num_sum_params = num_sum_params

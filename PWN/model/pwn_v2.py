@@ -124,13 +124,13 @@ class PWN(Model):
             srnn_optimizer = torch.optim.RMSprop(srnn_parameters, 0.0004)
         westimator_optimizer = torch.optim.Adam(westimator_parameters, lr=1e-4)
 
-        if self.train_rnn_w_ll or True:
+        if self.train_rnn_w_ll:
             current_ll_weight = 0
             ll_weight_history = []
             ll_weight_increase = self.ll_weight / self.ll_weight_inc_dur
-        #elif self.train_spn_on_prediction:
-        def ll_loss_pred(out, error):
-            return (-1 * torch.logsumexp(out, dim=1) * (error ** -2)).mean() * 1e-4
+        elif self.train_spn_on_prediction:
+            def ll_loss_pred(out, error):
+                return (-1 * torch.logsumexp(out, dim=1) * (error ** -2)).mean() * 1e-4
 
         lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer=srnn_optimizer, gamma=lr_decay)
 
@@ -166,6 +166,36 @@ class PWN(Model):
                 batch_x, batch_y = batch_x.to(device), batch_y.to(device)
                 batch_x, batch_y = batch_x.to(torch.float32), batch_y.to(torch.float32)
                 batch_westimator_x, batch_westimator_y = self.westimator.prepare_input(batch_x, batch_y)
+                if self.train_spn_on_gt:
+                    westimator_optimizer.zero_grad()
+                    if not stop_cspn_training or epoch >= epochs - self.westimator_final_learn:
+                        out_w, _ = self.call_westimator(batch_westimator_x, batch_westimator_y)
+
+                        if hasattr(self.westimator, 'spn'):
+                            gt_ll = out_w
+                            westimator_loss = ll_loss(gt_ll)
+                            westimator_loss.backward()
+                            westimator_optimizer.step()
+                        else:
+                            if self.westimator.use_made:
+                                raise NotImplementedError  # MADE not implemented here
+
+                            u, log_det = out_w
+
+                            negloglik_loss = 0.5 * (u ** 2).sum(dim=1)
+                            negloglik_loss += 0.5 * self.westimator.final_input_sizes * np.log(2 * pi)
+                            negloglik_loss -= log_det
+                            negloglik_loss = torch.mean(negloglik_loss)
+
+                            negloglik_loss.backward()
+                            westimator_loss = negloglik_loss.item()
+                            westimator_optimizer.step()
+                            westimator_optimizer.zero_grad()
+
+                    else:
+                        westimator_loss = westimator_losses_epoch[-1]
+
+                    westimator_loss_e += westimator_loss.detach()
 
                 # Also zero grads for westimator, s.t. old grads dont influence the optimization
                 srnn_optimizer.zero_grad()
@@ -188,45 +218,56 @@ class PWN(Model):
                 if self.train_rnn_w_ll:
                     l_loss = ll_loss(prediction_ll)
 
-                    local_ll = torch.logsumexp(prediction_ll, dim=1)
-                    local_ll = local_ll - local_ll.max()  # From 0 to -inf
-                    local_ll = local_ll / local_ll.min()  # From 0 to 1 -> low LL is 1, high LL is 0: Inverse Het
-                    local_ll = local_ll / local_ll.mean()  # Scale it to mean = 1
-                    if self.weight_mse_by_ll == 'het':
-                        # Het: low LL is 0, high LL is 1
-                        local_ll = local_ll.max() - local_ll
-                    #srnn_loss = p_loss * (self.ll_weight - current_ll_weight) + \
-                    #            current_ll_weight * (error * local_ll).mean()
-                    srnn_loss = (1 - current_ll_weight) * p_loss + current_ll_weight * (error * local_ll).mean()
+                    if self.weight_mse_by_ll is None:
+                        srnn_loss = (1 - current_ll_weight) * p_loss + current_ll_weight * l_loss
+                    else:
+                        local_ll = torch.logsumexp(prediction_ll, dim=1)
+                        local_ll = local_ll - local_ll.max()  # From 0 to -inf
+                        local_ll = local_ll / local_ll.min()  # From 0 to 1 -> low LL is 1, high LL is 0: Inverse Het
+                        local_ll = local_ll / local_ll.mean()  # Scale it to mean = 1
+
+                        if self.weight_mse_by_ll == 'het':
+                            # Het: low LL is 0, high LL is 1
+                            local_ll = local_ll.max() - local_ll
+
+                        srnn_loss = p_loss * (self.ll_weight - current_ll_weight) + \
+                                    current_ll_weight * (error * local_ll).mean()
                 else:
                     srnn_loss = p_loss
                     l_loss = 0
 
-                srnn_loss.backward(retain_graph=True)
+                srnn_loss.backward()
                 srnn_optimizer.step()
 
-                if hasattr(self.westimator, 'spn'):
-                    westimator_loss = ll_loss_pred(prediction_ll, error.detach())
-                    westimator_loss.backward()
-                    westimator_optimizer.step()
-                else:
-                    if type(prediction_ll) == tuple:
-                        u, log_det = prediction_ll
-                        negloglik_loss = 0.5 * (u ** 2).sum(dim=1)
-                        negloglik_loss += 0.5 * self.westimator.final_input_sizes * np.log(2 * pi)
-                        negloglik_loss -= log_det
-                        negloglik_loss = torch.mean(negloglik_loss * (error ** -2)) * 1e-4
+                if self.train_spn_on_prediction:
+                    if hasattr(self.westimator, 'spn'):
+                        westimator_loss = ll_loss_pred(prediction_ll, error.detach())
+                        westimator_loss.backward()
+                        westimator_optimizer.step()
                     else:
-                        mu, logp = torch.chunk(prediction_ll, 2, dim=1)
-                        u = (w_in - mu) * torch.exp(0.5 * logp)
-                        negloglik_loss = 0.5 * (u ** 2).sum(dim=1)
-                        negloglik_loss += 0.5 * w_in.shape[1] * np.log(2 * pi)
-                        negloglik_loss -= 0.5 * torch.sum(logp, dim=1)
-                        negloglik_loss = torch.mean(negloglik_loss)
-                    negloglik_loss.backward()
-                    westimator_loss = negloglik_loss.item()
-                    westimator_optimizer.step()
-                westimator_loss_e += westimator_loss.detach()
+                        if type(prediction_ll) == tuple:
+                            u, log_det = prediction_ll
+
+                            negloglik_loss = 0.5 * (u ** 2).sum(dim=1)
+                            negloglik_loss += 0.5 * self.westimator.final_input_sizes * np.log(2 * pi)
+                            negloglik_loss -= log_det
+                            negloglik_loss = torch.mean(negloglik_loss * (error ** -2)) * 1e-4
+
+                        else:
+                            mu, logp = torch.chunk(prediction_ll, 2, dim=1)
+                            u = (w_in - mu) * torch.exp(0.5 * logp)
+
+                            negloglik_loss = 0.5 * (u ** 2).sum(dim=1)
+                            negloglik_loss += 0.5 * w_in.shape[1] * np.log(2 * pi)
+                            negloglik_loss -= 0.5 * torch.sum(logp, dim=1)
+
+                            negloglik_loss = torch.mean(negloglik_loss)
+
+                        negloglik_loss.backward()
+                        westimator_loss = negloglik_loss.item()
+                        westimator_optimizer.step()
+
+                    westimator_loss_e += westimator_loss.detach()
 
                 l_loss = l_loss.detach() if not type(l_loss) == int else l_loss
                 srnn_loss_p_e += p_loss.item()
