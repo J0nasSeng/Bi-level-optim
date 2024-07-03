@@ -1,19 +1,19 @@
-from .spectral_rnn.spectral_rnn import SpectralRNN, SpectralRNNConfig
+from .srnn import SpectralGRUNet
 from .spectral_rnn.manifold_optimization import ManifoldOptimizer
 from .spectral_rnn.cgRNN import clip_grad_value_complex_
-from .transformer import TransformerPredictor, TransformerConfig
+from .transformer import TransformerPredictor, TransformerConfig, TransformerNet
 from .wein.EinsumNetwork import EinsumNetwork
 from .wein import WEinConfig, WEin
 from .model import Model
+from util.losses import SMAPE
+
 
 import numpy as np
 import torch
 import torch.nn as nn
+from rtpt import RTPT
 #from darts.darts_cnn.model_search import Network as CWSPNModelSearch
 #from darts.darts_rnn.model_search import RNNModelSearch
-
-# Use GPU if avaiable
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 def load_arch_params(srnn=True):
 
@@ -31,7 +31,7 @@ def load_arch_params(srnn=True):
 
 class PWNEM(Model):
 
-    def __init__(self, s_config: SpectralRNNConfig, c_config: WEinConfig, train_spn_on_gt=True,
+    def __init__(self, hidden_size, output_size, fft_compression, window_size, overlap, device, c_config: WEinConfig, num_srnn_layers=2, train_spn_on_gt=True,
                  train_spn_on_prediction=False, train_rnn_w_ll=False, weight_mse_by_ll=None, always_detach=False,
                  westimator_early_stopping=5, step_increase=False, westimator_stop_threshold=.5,
                  westimator_final_learn=2, ll_weight=0.5, ll_weight_inc_dur=20, use_transformer=False,
@@ -40,10 +40,27 @@ class PWNEM(Model):
         assert train_spn_on_gt or train_spn_on_prediction
         assert not train_rnn_w_ll or train_spn_on_gt
 
-        self.srnn = SpectralRNN(s_config) if not use_transformer else TransformerPredictor(
-            TransformerConfig(normalize_fft=True, window_size=s_config.window_size,
-                              fft_compression=s_config.fft_compression))
-        self.westimator = WEin(c_config)
+        if not use_transformer:
+            self.srnn = SpectralGRUNet(hidden_size, output_size, device, num_srnn_layers, fft_compression, window_size, overlap).to(device) 
+        else:
+            #trans_cfg = TransformerConfig(normalize_fft=True, window_size=window_size,
+            #                  fft_compression=fft_compression)
+            trans_cfg = TransformerConfig(normalize_fft=True, window_size=window_size, dropout=0.1,
+                  fft_compression=fft_compression, hidden_dim=64, embedding_dim=32,
+                  num_enc_dec=2, is_complex=False, native_complex=False)
+
+            trans_cfg.step_width = int(window_size * overlap)
+            trans_cfg.value_dim = window_size // 2 + 1
+
+            trans_cfg.compressed_value_dim = trans_cfg.value_dim // fft_compression
+            trans_cfg.removed_freqs = trans_cfg.value_dim - trans_cfg.compressed_value_dim
+            trans_cfg.input_dim = trans_cfg.compressed_value_dim
+            self.srnn = TransformerNet(trans_cfg, trans_cfg.input_dim * 2, trans_cfg.hidden_dim,
+                                  trans_cfg.input_dim * 2, trans_cfg.q, trans_cfg.k, trans_cfg.heads,
+                                  trans_cfg.num_enc_dec, attention_size=trans_cfg.attention_size,
+                                  dropout=trans_cfg.dropout, chunk_mode=trans_cfg.chunk_mode, pe=trans_cfg.pe,
+                                  complex=trans_cfg.is_complex, native_complex=trans_cfg.native_complex, device=device).to(device)
+        self.westimator = WEin(device, c_config)
 
 
         self.train_spn_on_gt = train_spn_on_gt
@@ -60,74 +77,38 @@ class PWNEM(Model):
         self.step_increase = step_increase
         self.use_transformer = use_transformer
         self.smape_target = smape_target
+        self.device = device
 
-    def train(self, x_in, y_in, val_x, val_y, embedding_sizes, batch_size=256, epochs=100, lr=0.004, lr_decay=0.97):
+    def train(self, dataloader, epochs=70, lr=0.004, lr_decay=0.97):
 
-        # TODO: Adjustment for complex optimization, needs documentation
-        if type(self.srnn) == TransformerPredictor:
-            lr /= 10
-        elif False and self.srnn.config.rnn_layer_config.use_cg_cell:
-            lr /= 4
+        rtpt_obj = RTPT('JS', 'PWN_baseline', epochs)
+        rtpt_obj.start()
 
-        # Model is trained jointly on all groups
-        x_ = np.concatenate(list(x_in.values()), axis=0)
-        y_ = np.concatenate(list(y_in.values()), axis=0)[:, :, -1]
+        device = self.device
 
-        if self.srnn.final_amt_pred_samples is None:
-            self.srnn.final_amt_pred_samples = next(iter(y_in.values())).shape[1]
-
-        # Init SRNN
-        x = torch.from_numpy(x_).float().to(device)
-        y = torch.from_numpy(y_).float().to(device)
-        self.srnn.config.embedding_sizes = embedding_sizes
-        self.srnn.build_net()
-
-        self.westimator.stft_module = self.srnn.net.stft
-
-        if self.srnn.config.use_searched_srnn:
-            search_stft = self.srnn.net.stft
-            emsize = 300
-            nhid = 300
-            nhidlast = 300
-            ntokens = 10000
-            dropout = 0
-            dropouth = 0
-            dropouti = 0
-            dropoute = 0
-            dropoutx = 0
-            config_layer = self.srnn.config
-            srnn_search = RNNModelSearch(search_stft, config_layer, ntokens, emsize, nhid, nhidlast,
-                                     dropout, dropouth, dropoutx, dropouti, dropoute).cuda()
-            # set arch weights according to searched cell
-            arch_params = load_arch_params(True)
-            srnn_search.fix_arch_params(arch_params)
-            # set searched srnn arch as srnn net
-            self.srnn.net = srnn_search
+        self.westimator.stft_module = self.srnn.stft
 
 
         # Init westimator
-        westimator_x_prototype, westimator_y_prototype = self.westimator.prepare_input(x[:1, :, -1], y[:1])
+        batch_x, batch_y = next(iter(dataloader))
+        westimator_x_prototype, westimator_y_prototype = self.westimator.prepare_input(batch_x[:1, :].to(device), batch_y[:1, :].to(device)) # NOTE: different to original PWN code since we only use 1 feature
         self.westimator.config.input_size = westimator_x_prototype.shape[1] + westimator_y_prototype.shape[1]
         self.westimator.create_net()
 
         prediction_loss = lambda error: error.mean()
         ll_loss = lambda out: -1 * torch.logsumexp(out, dim=1).mean()
         if self.smape_target:
-            smape_adjust = 2  # Move all values into the positive space
-            p_base_loss = lambda out, label: 2 * (torch.abs(out - label) /
-                                                  (torch.abs(out + smape_adjust) +
-                                                   torch.abs(label + smape_adjust))).mean(axis=1)
+            p_base_loss = SMAPE()
         # MSE target
         else:
             p_base_loss = lambda out, label: nn.MSELoss(reduction='none')(out, label).mean(axis=1)
 
-        srnn_parameters = list(self.srnn.net.parameters())
-        amt_param = sum([p.numel() for p in self.srnn.net.parameters()])
-        amt_param_w = sum([p.numel() for p in self.westimator.parameters()])
+        srnn_parameters = list(self.srnn.parameters())
 
-        srnn_optimizer = ManifoldOptimizer(srnn_parameters, lr, torch.optim.RMSprop, alpha=0.9) \
-            if type(self.srnn.config) == SpectralRNNConfig and self.srnn.config.rnn_layer_config.use_cg_cell \
-            else torch.optim.RMSprop(srnn_parameters, lr=lr, alpha=0.9)
+        if not self.use_transformer:
+            srnn_optimizer = torch.optim.Adam(srnn_parameters, lr=0.001)
+        else:
+            srnn_optimizer = torch.optim.RMSprop(srnn_parameters, 0.0004)
 
         if self.train_rnn_w_ll:
             current_ll_weight = 0
@@ -148,27 +129,12 @@ class PWNEM(Model):
         westimator_patience_counter = 0
         westimator_losses_epoch = []
 
-        self.srnn.net.train()
+        self.srnn.train()
         self.westimator.net.train()
-
-        if self.srnn.config.use_cached_predictions:
-            import pickle
-            with open('srnn_train.pkl', 'rb') as f:
-                all_predictions, all_f_cs = pickle.load(f)
-
-                all_predictions = torch.from_numpy(all_predictions).to(device)
-                all_f_cs = torch.from_numpy(all_f_cs).to(device)
 
         val_errors = []
         print(f'Starting Training of {self.identifier} model')
         for epoch in range(epochs):
-            idx_batches = torch.randperm(x.shape[0], device=device).split(batch_size)
-
-            #if epoch % 2:
-            #    model_base_path = 'res/models/'
-            #    model_name = f'{self.identifier}-{str(epoch)}'
-            #    model_filepath = f'{model_base_path}{model_name}'
-            #    self.save(model_filepath)
 
             if self.train_rnn_w_ll:
                 ll_weight_history.append(current_ll_weight)
@@ -178,13 +144,10 @@ class PWNEM(Model):
 
             srnn_loss_e = 0
             westimator_loss_e = 0
-            for i, idx in enumerate(idx_batches):
-                batch_x, batch_y = x[idx].detach().clone(), y[idx, :].detach().clone()
-                batch_westimator_x, batch_westimator_y = self.westimator.prepare_input(batch_x[:, :, -1], batch_y)
-
-                if self.srnn.config.use_cached_predictions:
-                    batch_p = all_predictions.detach().clone()[idx]
-                    batch_fc = all_f_cs.detach().clone()[idx]
+            for i, (batch_x, batch_y) in enumerate(dataloader):
+                batch_x, batch_y = batch_x.to(device), batch_y.to(device)
+                batch_x, batch_y = batch_x.to(torch.float32), batch_y.to(torch.float32)
+                batch_westimator_x, batch_westimator_y = self.westimator.prepare_input(batch_x, batch_y)
 
                 if self.train_spn_on_gt:
                     if not stop_cspn_training or epoch >= epochs - self.westimator_final_learn:
@@ -202,14 +165,7 @@ class PWNEM(Model):
                     westimator_loss_e += westimator_loss.detach()
 
                 srnn_optimizer.zero_grad()
-
-                if not self.srnn.config.use_cached_predictions:
-                    if self.srnn.config.use_searched_srnn:
-                        prediction_raw, f_c = self.srnn.net(batch_x, batch_y,self.srnn.net.weights, return_coefficients=True)
-                    else:
-                        prediction_raw, f_c = self.srnn.net(batch_x, batch_y, return_coefficients=True)
-                else:
-                    prediction_raw, f_c = batch_p, batch_fc
+                prediction_raw, f_c = self.srnn(batch_x, batch_y)
 
                 if self.westimator.use_stft:
                     prediction_ll_ = self.call_westimator(batch_westimator_x,
@@ -235,10 +191,7 @@ class PWNEM(Model):
                     prediction_ll, w_in = self.call_westimator(batch_westimator_x, prediction
                                         if self.train_rnn_w_ll and not self.always_detach else prediction.detach())
 
-                if type(self.srnn) == TransformerPredictor:
-                    prediction = prediction_raw
-                else:
-                    prediction = prediction_raw
+                prediction = prediction_raw
 
                 error = p_base_loss(prediction, batch_y)
                 p_loss = prediction_loss(error)
@@ -266,13 +219,8 @@ class PWNEM(Model):
                     srnn_loss = p_loss
                     l_loss = 0
 
-                if not self.srnn.config.use_cached_predictions:
-                    srnn_loss.backward()
-
-                    if self.srnn.config.clip_gradient_value > 0:
-                        clip_grad_value_complex_(srnn_parameters, self.srnn.config.clip_gradient_value)
-
-                    srnn_optimizer.step()
+                srnn_loss.backward()
+                srnn_optimizer.step()
 
                 if self.train_spn_on_prediction:
                     westimator_loss = ll_loss_pred(prediction_ll, error.detach())
@@ -293,12 +241,14 @@ class PWNEM(Model):
                 srnn_losses_ll.append(l_loss)#srnn_losses_ll.append(l_loss)
 
                 if (i + 1) % 10 == 0:
-                    print(f'Epoch {epoch + 1} / {epochs}: Step {(i + 1)} / {len(idx_batches)}. '
+                    print(f'Epoch {epoch + 1} / {epochs}: Step {(i + 1)} / {len(dataloader)}. '
                           f'Avg. WCSPN Loss: {westimator_loss_e / (i + 1)} '
                           f'Avg. SRNN Loss: {srnn_loss_e / (i + 1)}')
 
             self.westimator.net.em_update()
-            lr_scheduler.step()
+            #lr_scheduler.step()
+
+            rtpt_obj.step()
 
             if epoch < self.ll_weight_inc_dur and self.train_rnn_w_ll:
                 if self.step_increase:
@@ -308,14 +258,14 @@ class PWNEM(Model):
             elif self.train_rnn_w_ll:
                 current_ll_weight = self.ll_weight
 
-            westimator_loss_epoch = westimator_loss_e / len(idx_batches)
-            srnn_loss_epoch = srnn_loss_e / len(idx_batches)
+            westimator_loss_epoch = westimator_loss_e / len(dataloader)
+            srnn_loss_epoch = srnn_loss_e / len(dataloader)
             print(f'Epoch {epoch + 1} / {epochs} done.'
                   f'Avg. WCSPN Loss: {westimator_loss_epoch} '
                   f'Avg. SRNN Loss: {srnn_loss_epoch}')
 
-            print(f'Avg. SRNN-Prediction-Loss: {srnn_loss_p_e / len(idx_batches)}')
-            print(f'Avg. SRNN-LL-Loss: {srnn_loss_ll_e / len(idx_batches)}')
+            print(f'Avg. SRNN-Prediction-Loss: {srnn_loss_p_e / len(dataloader)}')
+            print(f'Avg. SRNN-LL-Loss: {srnn_loss_ll_e / len(dataloader)}')
 
             if len(westimator_losses_epoch) > 0 and not stop_cspn_training and \
                     not westimator_loss_epoch > westimator_losses_epoch[-1] + self.westimator_stop_threshold and not \
@@ -333,35 +283,6 @@ class PWNEM(Model):
 
             westimator_losses_epoch.append(westimator_loss_epoch)
 
-            if False and epoch % 3 == 0:
-                pred_val, _ = self.predict({key: x for key, x in val_x.items() if len(x) > 0}, mpe=False)
-                self.srnn.net.train()
-                self.westimator.net.train()
-
-                val_mse = np.mean([((p - val_y[key][:, :, -1]) ** 2).mean() for key, p in pred_val.items()])
-                val_errors.append(val_mse)
-
-        if not self.srnn.config.use_cached_predictions:
-            predictions = []
-            f_cs = []
-
-            with torch.no_grad():
-                print(x.shape[0] // batch_size + 1)
-                for i in range(x.shape[0] // batch_size + 1):
-                    batch_x, batch_y = x[i * batch_size:(i + 1) * batch_size], \
-                                       y[i * batch_size:(i + 1) * batch_size]
-                    prediction, f_c = self.srnn.net(batch_x, batch_y, return_coefficients=True)
-
-                    predictions.append(prediction)
-                    f_cs.append(f_c)
-
-            predictions = torch.cat(predictions, dim=0).detach().cpu().numpy()
-            f_cs = torch.cat(f_cs, dim=0).detach().cpu().numpy()
-
-            import pickle
-            with open('srnn_train.pkl', 'wb') as f:
-                pickle.dump((predictions, f_cs), f)
-
 
     @torch.no_grad()
     def predict(self, x, batch_size=1024, pred_label='', mpe=False):
@@ -377,7 +298,7 @@ class PWNEM(Model):
             ll = self.westimator.predict(x_, predictions, batch_size=batch_size)
 
         if mpe:
-            y_empty = {key: np.zeros((x[key].shape[0], self.srnn.net.amt_prediction_samples)) for key in x.keys()}
+            y_empty = {key: np.zeros((x[key].shape[0], self.srnn.amt_prediction_samples)) for key in x.keys()}
             predictions_mpe = self.westimator.predict_mpe({key: x_.copy() for key, x_ in x.items()},
                                                            y_empty, batch_size=batch_size)
             lls_mpe = self.westimator.predict(x_, {key: v[0] for key, v in predictions_mpe.items()},
@@ -388,6 +309,20 @@ class PWNEM(Model):
         else:
             return predictions, ll
 
+    @torch.no_grad()
+    def predict_v2(self, dataloader):
+        preds, lls, gt = [], [], []
+        for x, y in dataloader:
+            x, y = x.to(torch.float32), y.to(torch.float32)
+            x, y = x.to(self.device), y.to(self.device)
+            predictions, f_c = self.srnn(x, y)
+            batch_westimator_x, batch_westimator_y = self.westimator.prepare_input(x, y)
+            prediction_ll, w_in = self.call_westimator(batch_westimator_x, f_c.reshape(f_c.shape[0], -1))
+            preds.append(predictions)
+            lls.append(prediction_ll)
+            gt.append(y)
+        return torch.cat(preds), torch.cat(lls), torch.cat(gt)
+
     def save(self, filepath):
         self.srnn.save(filepath)
         self.westimator.save(filepath)
@@ -395,7 +330,7 @@ class PWNEM(Model):
     def load(self, filepath):
         self.srnn.load(filepath)
         self.westimator.load(filepath)
-        self.westimator.stft_module = self.srnn.net.stft
+        self.westimator.stft_module = self.srnn.stft
 
     def call_westimator(self, x, y, return_cond=False):
         y_ = torch.stack([y.real, y.imag], dim=-1) if torch.is_complex(y) else y

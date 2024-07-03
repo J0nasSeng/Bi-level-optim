@@ -1,5 +1,5 @@
 import torch.nn as nn
-from rational.torch import Rational
+#from rational.torch import Rational
 
 
 class WeigthNN(nn.Module):
@@ -12,12 +12,12 @@ class WeigthNN(nn.Module):
 
         self.sums_roundup = ((num_sum_params + 63) // 64) * 64
         self.dense_s1 = nn.Linear(inp_size, self.sums_roundup // 2)
-        self.dense_sa = Rational() if use_rationals else nn.ReLU()
+        self.dense_sa = nn.ReLU()
         self.dense_s2 = nn.Linear(8 * 4, 64)
 
         hidden_l = num_leaf_params // 4
         self.dense_l1 = nn.Linear(inp_size, hidden_l)
-        self.dense_la = Rational() if use_rationals else nn.ReLU()
+        self.dense_la = nn.ReLU()
         self.dense_l2 = nn.Linear(hidden_l, num_leaf_params)
 
     def forward(self, x):

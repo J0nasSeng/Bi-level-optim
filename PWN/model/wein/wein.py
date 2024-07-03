@@ -9,18 +9,16 @@ import torch.nn as nn
 import datetime as dt
 import pickle
 
-# Use GPU if avaiable
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
 
 class WEin(SPN):
 
-    def __init__(self, config: WEinConfig = WEinConfig()):
+    def __init__(self, device, config: WEinConfig = WEinConfig()):
         super(WEin, self).__init__()
 
         self.config = config
         self.graph = None
         self.net = None
+        self.device = device
 
         self.stft_module = None
 
@@ -53,7 +51,7 @@ class WEin(SPN):
             print("[{}] Train LL {}".format(epoch_count, lls[-1]))
             self.net.train()
 
-            idx_batches = torch.randperm(x.shape[0], device=device).split(batch_size)
+            idx_batches = torch.randperm(x.shape[0], device=self.device).split(batch_size)
 
             total_ll = 0.0
             for idx in idx_batches:
@@ -82,7 +80,7 @@ class WEin(SPN):
             x, y = self.prepare_input(x_[key], y_[key], stft_y=stft_y)
 
             lls_joint, lls_marginal = [], []
-            idx_batches = torch.arange(x.shape[0], device=device).split(batch_size)
+            idx_batches = torch.arange(x.shape[0], device=self.device).split(batch_size)
             for i, idx in enumerate(idx_batches):
                 batch_x, batch_y = x[idx, :].detach(), y[idx, :].detach()
                 net_in = torch.cat([batch_x, batch_y], dim=1)
@@ -114,7 +112,7 @@ class WEin(SPN):
             self.net.eval()
 
             ll_cond = []
-            idx_batches = torch.arange(x.shape[0], device=device).split(batch_size)
+            idx_batches = torch.arange(x.shape[0], device=self.device).split(batch_size)
             for i, idx in enumerate(idx_batches):
                 batch_x, batch_y = x[idx, :].detach().clone(), y[idx, :].detach().clone()
 
@@ -148,7 +146,7 @@ class WEin(SPN):
             self.net.set_marginalization_idx(list(range(x.shape[1], x.shape[1] + y.shape[1])))
 
             mpes, mpes_r = [], []
-            idx_batches = torch.arange(x.shape[0], device=device).split(batch_size)
+            idx_batches = torch.arange(x.shape[0], device=self.device).split(batch_size)
             for i, idx in enumerate(idx_batches):
                 batch_x, batch_y = x[idx, :].detach(), y[idx, :].detach()
                 mpe = self.net.mpe(x=torch.cat([batch_x, batch_y], dim=1))[:, x.shape[1]:]
@@ -215,4 +213,4 @@ class WEin(SPN):
 
         self.net = EinsumNetwork.EinsumNetwork(self.graph, args)
         self.net.initialize()
-        self.net.to(device)
+        self.net.to(self.device)

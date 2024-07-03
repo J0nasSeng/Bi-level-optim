@@ -1,5 +1,5 @@
 from preprocessing import *
-from model import PWNv2
+from model import PWNv2, PWNEMv2
 from model.cwspn import CWSPNConfig
 from model.wein import WEinConfig
 from model.wein.EinsumNetwork.ExponentialFamilyArray import NormalArray
@@ -16,6 +16,8 @@ import os
 plot_base_path = 'res/plots/'
 model_base_path = 'res/models/'
 experiments_base_path = 'res/experiments/'
+
+uncertainty_estimator = 'wein'
 
 config_w = WEinConfig()
 config_w.exponential_family = NormalArray #NormalArray #MultivariateNormalArray
@@ -42,11 +44,11 @@ manual_split = True
 
 dataset_key = 'm4_Yearly'
 hyperparams = {
-    'm4_Hourly': {'window_size': 24, 'fft_compression': 2, 'context_timespan': int(20 * 24),
+    'm4_Hourly': {'window_size': 24, 'fft_compression': 1, 'context_timespan': int(20 * 24),
                'prediction_timespan': int(2 * 24), 'timespan_step': int(.5 * 24)},  # 700 Min Context
-    'm4_Daily': {'window_size': 14, 'fft_compression': 2, 'context_timespan': int(5 * 14),
+    'm4_Daily': {'window_size': 14, 'fft_compression': 1, 'context_timespan': int(5 * 14),
               'prediction_timespan': int(1 * 14), 'timespan_step': int(.5 * 14)},  # 93 Min Context
-    'm4_Weekly': {'window_size': 14, 'fft_compression': 2, 'context_timespan': int(4.5 * 14),
+    'm4_Weekly': {'window_size': 14, 'fft_compression': 1, 'context_timespan': int(4.5 * 14),
                'prediction_timespan': int(14), 'timespan_step': int(.5 * 14)},  # 80 Min Context
     'm4_Monthly': {'window_size': 18, 'fft_compression': 1, 'context_timespan': int(6 * 18),
                 'prediction_timespan': int(1 * 18), 'timespan_step': int(.5 * 18)},  # 42 Min Context
@@ -68,7 +70,7 @@ use_transformer = False
 hidden_size = 128 if use_transformer else 64
 output_size = 6
 learning_rate = 0.0004 if use_transformer else 0.004
-epochs = 10
+epochs = 15000
 
 exchange_context_timespan = 6*30 #6*30
 exchange_prediction_timespan = 30
@@ -92,7 +94,7 @@ solar_timespan_step = 10*24
 #config.fft_compression = hyperparams[dataset_key]['fft_compression']
 
 #Define experiment to run, ReadM4 requieres the m4key as an additional argument
-device = torch.device('cuda:2') # IMPORTANT: rationals package only supports one cuda device, delivers wrong results on device != 0!
+device = torch.device('cuda:7') # IMPORTANT: rationals package only supports one cuda device, delivers wrong results on device != 0!
 
 m4_key = dataset_key[3:].lower()
 dataset = M4Dataset(train_len=hyperparams[dataset_key]['context_timespan'], test_len=hyperparams[dataset_key]['prediction_timespan'], subset=m4_key)
@@ -103,9 +105,14 @@ for s in seeds:
     torch.manual_seed(s)
 
     dataloader = DataLoader(dataset.train_data, batch_size=256, shuffle=True)
-    model = PWNv2(hidden_size, hyperparams[dataset_key]['prediction_timespan'], hyperparams[dataset_key]['fft_compression'], 
+    if uncertainty_estimator == 'cwspn':
+        model = PWNv2(hidden_size, hyperparams[dataset_key]['prediction_timespan'], hyperparams[dataset_key]['fft_compression'], 
                   hyperparams[dataset_key]['window_size'], 0.5, device, config_c, num_srnn_layers=2, train_spn_on_gt=False, train_spn_on_prediction=True,
                 smape_target=True, use_transformer=use_transformer, train_rnn_w_ll=False)
+    elif uncertainty_estimator == 'wein':
+        model = PWNEMv2(hidden_size, hyperparams[dataset_key]['prediction_timespan'], hyperparams[dataset_key]['fft_compression'],
+                        hyperparams[dataset_key]['window_size'], 0.5, device, config_w, num_srnn_layers=2, train_spn_on_gt=False, train_spn_on_prediction=True,
+                        train_rnn_w_ll=False, use_transformer=use_transformer, smape_target=True)
 
     start_time = time.time()
     model.train(dataloader, epochs=epochs, lr=learning_rate)
