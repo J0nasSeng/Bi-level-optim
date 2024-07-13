@@ -157,10 +157,10 @@ def main(rand):
   experiment_config = json.load(f)
 
   archepochs = experiment_config[args.key]['archepochs']
-  batchsize = 16#experiment_config[args.key]['batchsize']
+  batchsize = experiment_config[args.key]['batchsize']
   config.window_size = experiment_config[args.key]['fftWinSize']
   config.fft_compression = experiment_config[args.key]['fftComp']
-  EarlyStop = experiment_config[args.key]['EarlyStop']
+  earlyStop = experiment_config[args.key]['EarlyStop']
   context_timespan = experiment_config[args.key]['contexttime']
   prediction_timespan = experiment_config[args.key]['predictiontime']
   timespan_step = experiment_config[args.key]['timestep']
@@ -171,10 +171,10 @@ def main(rand):
 
   ######  Choose Read Data Function  #########################
   smape_use = False
-  config_layer = {} #No longer necessary?
+  config_layer = {} 
 
   if args.key == 'M4_Yearly':
-      data_source = ReadM4(key='Yearly')
+      #data_source = ReadM4(key='Yearly')
       smape_use = True
       hidden_size_trans = 128
       hiddeen_size_srnn = 64
@@ -188,20 +188,75 @@ def main(rand):
       config_layer['windowsize'] = config.window_size
 
   elif args.key == 'M4_Quaterly':
-      data_source = ReadM4(key='Quarterly')
+      #data_source = ReadM4(key='Quarterly')
       smape_use = True
+      hidden_size_trans = 128
+      hiddeen_size_srnn = 64
+      m4_key = args.key[3:].lower()
+      dataset = M4Dataset(train_len=context_timespan,
+                          test_len=prediction_timespan, subset=m4_key)
+      value_dim = config.window_size // 2 + 1
+      config_layer['input_size'] = value_dim // config.fft_compression
+      config_layer['hidden_size'] = 64
+      config_layer['fftcomp'] = config.fft_compression
+      config_layer['windowsize'] = config.window_size
+
   elif args.key == 'M4_Monthly':
-      data_source = ReadM4(key='Monthly')
+      #data_source = ReadM4(key='Monthly')
       smape_use = True
+      hidden_size_trans = 128
+      hiddeen_size_srnn = 64
+      m4_key = args.key[3:].lower()
+      dataset = M4Dataset(train_len=context_timespan,
+                          test_len=prediction_timespan, subset=m4_key)
+      value_dim = config.window_size // 2 + 1
+      config_layer['input_size'] = value_dim // config.fft_compression
+      config_layer['hidden_size'] = 64
+      config_layer['fftcomp'] = config.fft_compression
+      config_layer['windowsize'] = config.window_size
+
   elif args.key == 'M4_Weekly':
-      data_source = ReadM4(key='Weekly')
+      #data_source = ReadM4(key='Weekly')
       smape_use = True
+      hidden_size_trans = 128
+      hiddeen_size_srnn = 64
+      m4_key = args.key[3:].lower()
+      dataset = M4Dataset(train_len=context_timespan,
+                          test_len=prediction_timespan, subset=m4_key)
+      value_dim = config.window_size // 2 + 1
+      config_layer['input_size'] = value_dim // config.fft_compression
+      config_layer['hidden_size'] = 64
+      config_layer['fftcomp'] = config.fft_compression
+      config_layer['windowsize'] = config.window_size
+
   elif args.key == 'M4_Daily':
-      data_source = ReadM4(key='Daily')
+      #data_source = ReadM4(key='Daily')
       smape_use = True
+      hidden_size_trans = 128
+      hiddeen_size_srnn = 64
+      m4_key = args.key[3:].lower()
+      dataset = M4Dataset(train_len=context_timespan,
+                          test_len=prediction_timespan, subset=m4_key)
+      value_dim = config.window_size // 2 + 1
+      config_layer['input_size'] = value_dim // config.fft_compression
+      config_layer['hidden_size'] = 64
+      config_layer['fftcomp'] = config.fft_compression
+      config_layer['windowsize'] = config.window_size
+
   elif args.key == 'M4_Hourly':
-      data_source = ReadM4(key='Hourly')
+      #data_source = ReadM4(key='Hourly')
       smape_use = True
+      hidden_size_trans = 128
+      hiddeen_size_srnn = 64
+      m4_key = args.key[3:].lower()
+      dataset = M4Dataset(train_len=context_timespan,
+                          test_len=prediction_timespan, subset=m4_key)
+      value_dim = config.window_size // 2 + 1
+      config_layer['input_size'] = value_dim // config.fft_compression
+      config_layer['hidden_size'] = 64
+      config_layer['fftcomp'] = config.fft_compression
+      config_layer['windowsize'] = config.window_size
+
   elif args.key == 'Power':
       data_source = ReadPowerPKL()
       use_Power = True
@@ -329,7 +384,7 @@ def main(rand):
     print(F.softmax(model.alphas_reduce, dim=-1))
 
     # training
-    train_acc, train_obj = train_new(train_loader, test_loader, model, architect, criterion, optimizer, lr,model_1,smape_use)
+    train_acc, train_obj = train_new(train_loader, test_loader, model, architect, criterion, optimizer, lr,model_1,smape_use,earlyStop)
     logging.info('train_acc %f', train_acc)
 
     if epoch < model.ll_weight_inc_dur and model.train_rnn_w_ll:
@@ -349,7 +404,7 @@ def main(rand):
 
     utils.save(model, os.path.join(args.save, 'weights.pt'))
 
-def train_new(train_loader,test_loader, model, architect, criterion, optimizer, lr,pwn_model,use_smape):
+def train_new(train_loader,test_loader, model, architect, criterion, optimizer, lr,pwn_model,use_smape,earlyStop):
   objs = utils.AvgrageMeter()
   objs_spn = utils.AvgrageMeter()
   top1 = utils.AvgrageMeter()
@@ -359,7 +414,7 @@ def train_new(train_loader,test_loader, model, architect, criterion, optimizer, 
 
     model.train()
     n = batch_x.size(0)
-    if step >= 40:#90
+    if step >= earlyStop:#90
       continue
 
     batch_x = Variable(batch_x, requires_grad=False).cuda()

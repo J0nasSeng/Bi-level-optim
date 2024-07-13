@@ -11,7 +11,7 @@ COPY ./requirements_v2.txt .
 COPY ./setup.sh /app/setup.sh
 RUN pip install -r requirements_v2.txt
 
-#RUN pip install torch==1.9.0+cu111 -f https://download.pytorch.org/whl/torch_stable.html
+RUN pip install torch==1.9.0+cu111 -f https://download.pytorch.org/whl/torch_stable.html
 RUN pip install rational-activations==0.2.1
 RUN pip install networkx==2.8.5
 

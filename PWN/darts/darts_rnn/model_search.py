@@ -17,6 +17,7 @@ class DARTSCellSearch(DARTSCell):
     #s0 = self._compute_init_state(x, h_prev, x_mask, h_mask)
     #s0 = self.bn(s0)
     #probs = F.softmax(self.weights, dim=-1)
+
     probs = F.softmax(srnn_arch_weights, dim=-1)
     offset = 0
     #states = [x]

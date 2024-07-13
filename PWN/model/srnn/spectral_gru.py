@@ -91,6 +91,35 @@ class SpectralGRUNet(nn.Module):
         out = self.stft(out_dec, reverse=True)
         return out[:, -num_samples:], out_dec[:, :, -num_samples_cmplx:] # TODO: check if this is correct
 
+
+class SpectralGRULayer(nn.Module):
+    def __init__(self, hidden_size, device, num_layers=1, fft_compression=1, window_size=6, overlap=0.5):
+        super(SpectralGRULayer, self).__init__()
+        self.value_dim = window_size // 2 + 1
+        self.input_size = self.value_dim // fft_compression
+        self.output_size = self.input_size
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+        self.gru = nn.GRU(2 * self.input_size, hidden_size, num_layers, batch_first=True)
+        self.fc = nn.Linear(hidden_size, self.output_size)
+        self.w = nn.Parameter(nn.init.xavier_uniform_(torch.empty(2 * self.input_size, self.hidden_size), gain=0.01))
+        self.b = nn.Parameter(nn.Parameter(rand_uniform((2 * self.input_size,), -0.01, 0.01)))
+        self.stft = STFT(fft_compression, window_size, overlap, True, device)
+
+    def forward(self, x):
+        # keeps shapes for prediction (no semantic meaning)
+        #num_samples = y.shape[1]
+        #num_samples_cmplx = self.stft(y.squeeze()).shape[-1]
+
+        h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(x.device)
+
+        out, h_out = self.gru(x, h0)
+
+        out = out @ self.w.T + self.b
+
+        return out, h_out  # TODO: check if this is correct
+
+
 #input_size = 1
 #hidden_size = 128
 #output_size = 6

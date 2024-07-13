@@ -9,6 +9,7 @@ from darts.darts_rnn.utils import embedded_dropout
 from torch.autograd import Variable
 
 from model.spectral_rnn.cgRNN import RNNLayer
+from model.srnn import SpectralGRULayer
 
 INITRANGE = 0.04
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -21,10 +22,14 @@ class DARTSCell(nn.Module):
     # genotype is None when doing arch search
     steps = STEPS
 
-    if config_layer.rnn_layer_config.use_gated:
-        cell = torch.nn.GRUCell
+    input_size = config_layer['input_size']
+    hidden_size = config_layer['hidden_size']
+    fftcomp = config_layer['fftcomp']
+    windowsize = config_layer['windowsize']
+    #cell = torch.nn.GRU(2*input_size, hidden_size,num_layers=1, batch_first=True)
+    cell = SpectralGRULayer(hidden_size,device=device,fft_compression=fftcomp,window_size=windowsize)
     self.layer = nn.ModuleList([
-        RNNLayer(cell, config_layer) for i in range(steps)
+        cell for i in range(steps)
     ])
 
   def forward(self, inputs,srnn_arch_weights):
@@ -101,8 +106,8 @@ class RNNModel(nn.Module):
         self.config = config_layer
         self.fix_weight = False
 
-        if config_layer.use_only_ts_input:
-            self.f_in = nn.ModuleList([self.stft])
+
+        self.f_in = nn.ModuleList([self.stft])
 
         if cell_cls == DARTSCell:
             assert genotype is not None
@@ -137,33 +142,14 @@ class RNNModel(nn.Module):
         #emb = embedded_dropout(self.encoder, input, dropout=self.dropoute if self.training else 0)
         #emb = self.lockdrop(emb, self.dropouti)
 
-        if self.config.use_only_ts_input:
-            x = [self.f_in[0](x_in[:, :, -1])]
-        else:
-            x = [f_in_(x_in[:, :, i].long()) if i in [1, 2] else (
-                f_in_(x_in[:, :, i:i + 1].float() / 100.) if i == 0 else f_in_(x_in[:, :, i])) for i, f_in_ in
-                 enumerate(self.f_in)]
+        num_samples = y_in.shape[1]
+        num_samples_cmplx = self.stft(y_in.squeeze()).shape[-1]
 
-        stft_len = x[-1].shape[1]
+        x_in = self.stft(x_in.squeeze())  # B x N x T
+        stft_len = x_in.shape[1]
+        x_in = torch.cat([x_in.real, x_in.imag], dim=1).swapaxes(-2, -1)  # B x T x 2N
 
-        x[-1] = x[-1].swapaxes(-2, -1)
-
-        encoder_in = x[-1]
-        if self.amt_prediction_samples is None or self.amt_prediction_windows is None:
-            self.amt_prediction_samples = y_in.shape[1]
-            self.amt_prediction_windows = self.stft(y_in).shape[-1]
-
-        decoder_in = torch.zeros([encoder_in.shape[0], self.amt_prediction_windows, encoder_in.shape[-1]]).to(device)
-
-        gru_in = torch.cat([encoder_in, decoder_in], dim=-2).type(torch.complex64) \
-            .to(device)
-
-        gru_in_extended = gru_in.clone()
-
-        if not self.config.rnn_layer_config.use_cg_cell:
-            gru_in_extended = torch.cat([gru_in_extended.real, gru_in_extended.imag], dim=-1)
-
-        raw_output = gru_in_extended#gru_in_extended.clone()
+        raw_output = x_in #gru_in_extended.clone()
         new_hidden = []
         raw_outputs = []
         outputs = []
@@ -173,24 +159,17 @@ class RNNModel(nn.Module):
             new_hidden.append(new_h)
             raw_outputs.append(raw_output)
         hidden = new_hidden
-        gru_out = hidden[0]#hidden[0].clone()
 
-        decoder_out = gru_out[:, -self.amt_prediction_windows:].clone()
-        if not self.config.rnn_layer_config.use_cg_cell:
-            decoder_out = torch.complex(decoder_out[:, :, :stft_len], decoder_out[:, :, stft_len:])
+        out = hidden[0]#hidden[0].clone()
 
-        if self.config.use_add_linear:
-            decoder_out = self.add_pre_act(decoder_out)
-            decoder_out = self.add_linear(decoder_out)
+        out_dec = torch.complex(out[:, :, :stft_len], out[:, :, stft_len:]).swapaxes(-2, -1)
 
-        decoder_out_ = decoder_out.swapaxes(-2, -1)
-
-        out = self.stft(decoder_out_, reverse=True)[:, -self.amt_prediction_samples:]
+        out = self.stft(out_dec, reverse=True)
 
         if return_coefficients:
-            return out, decoder_out
+            return out[:, -num_samples:], out_dec[:, :, -num_samples_cmplx:]
         else:
-            return out
+            return out[:, -num_samples:]
 
         #output = self.lockdrop(raw_output, self.dropout)
         #outputs.append(output)

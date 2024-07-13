@@ -3,12 +3,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 import model.wein.EinsumNetwork.EinsumNetwork
-from operations import *
+from darts.operations import *
 from torch.autograd import Variable
-from genotypes import PWN_PRIMITIVES, PRIMITIVES
-from genotypes import Genotype
+from darts.genotypes import PWN_PRIMITIVES, PRIMITIVES
+from darts.genotypes import Genotype
 from model.wein.EinsumNetwork import EinsumNetwork
-
 
 class MixedOp(nn.Module):
 
@@ -42,10 +41,11 @@ class MixedOp(nn.Module):
             pred_trans, f_c_trans = self._ops[0](batch_x, batch_y, return_coefficients=True)
 
             if srnn_arch_weights is None:
-                pred_srnn, f_c_srnn = self._ops[1](batch_x, batch_y, return_coefficients=True)
+                pred_srnn, f_c_srnn = self._ops[1](batch_x, batch_y)#pred_srnn, f_c_srnn = self._ops[1](batch_x, batch_y, return_coefficients=True)
+                f_c_srnn = f_c_srnn.permute(0, 2, 1)
             else:
-                pred_srnn, f_c_srnn = self._ops[1](batch_x, batch_y,srnn_arch_weights, return_coefficients=True)
-
+                pred_srnn, f_c_srnn = self._ops[1](batch_x, batch_y,srnn_arch_weights)#pred_srnn, f_c_srnn = self._ops[1](batch_x, batch_y,srnn_arch_weights, return_coefficients=True)
+                f_c_srnn = f_c_srnn.permute(0, 2, 1)
             out_1 = pred_trans * weights[0][0] + pred_srnn * weights[0][1]
             out_2 = f_c_trans * weights[0][0] + f_c_srnn * weights[0][1]
 

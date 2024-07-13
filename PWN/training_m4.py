@@ -94,7 +94,7 @@ solar_timespan_step = 10*24
 #config.fft_compression = hyperparams[dataset_key]['fft_compression']
 
 #Define experiment to run, ReadM4 requieres the m4key as an additional argument
-device = torch.device('cuda:7') # IMPORTANT: rationals package only supports one cuda device, delivers wrong results on device != 0!
+device = torch.device('cuda:0') # IMPORTANT: rationals package only supports one cuda device, delivers wrong results on device != 0!
 
 m4_key = dataset_key[3:].lower()
 dataset = M4Dataset(train_len=hyperparams[dataset_key]['context_timespan'], test_len=hyperparams[dataset_key]['prediction_timespan'], subset=m4_key)
