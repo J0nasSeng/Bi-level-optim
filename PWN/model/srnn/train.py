@@ -15,7 +15,7 @@ class M4Dataset:
         self.norm_stats = {}
         self._train_len = train_len
         self._test_len = test_len
-        self.df = load_forecasting('m4_yearly_dataset', return_metadata=False)
+        self.df = load_forecasting('m4_quarterly_dataset', return_metadata=False)
 
     def prepare(self):
         x_data, y_data = [], []
@@ -55,10 +55,10 @@ dataloader = DataLoader(dataset.train_data, batch_size=256, shuffle=True)
 
 
 input_size = 1
-hidden_size = 128
+hidden_size = 196
 output_size = 6
-num_layers = 2
-device = torch.device('cuda:3')
+num_layers = 3
+device = torch.device('cuda:7')
 
 model = SpectralGRUNet(hidden_size, output_size, device, num_layers).to(device)
 #criterion = nn.MSELoss()
@@ -110,7 +110,7 @@ test_smape = 0.0
 
 with torch.no_grad():
     for x, y in test_loader:
-        outputs = model(x_batch, y_batch)
+        outputs, _ = model(x_batch, y_batch)
         loss = criterion(outputs, y_batch.squeeze())
         test_smape += loss.item()
 

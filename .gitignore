@@ -3,3 +3,4 @@ PWN/res
 PWN/data_cache.pkl
 baselines/
 *.pkl
+search-*/

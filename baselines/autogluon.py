@@ -12,6 +12,7 @@ import pandas as pd
 #from preprocessing import *
 import json
 from autogluon.timeseries import TimeSeriesDataFrame, TimeSeriesPredictor
+from data_source import ReadExchangePKL, ReadPowerPKL, ReadSolarPKL, ReadWikipediaPKL
 from rtpt import RTPT
 
 device = 'cuda'
@@ -27,17 +28,20 @@ parser.add_argument('--gpu', type=int, default=0, help='gpu device id')
 
 args = parser.parse_args()
 
+def to_df(ds):
+  vals = []
+  cols = ds.data[0]['column_names']
+  for v in ds.data:
+    vals.append(v['column_values'])
+
+  df = pd.DataFrame(data=vals, columns=cols)
+  return df
+
 def main(rand):
 
   f = open('params.json')
   experiment_config = json.load(f)
 
-  numEpochs = experiment_config[args.key]['numEpochs']
-  batchsize = experiment_config[args.key]['batchsize']
-  fftWinSize = experiment_config[args.key]['fftWinSize']
-  fftComp = experiment_config[args.key]['fftComp']
-  pwnLR = experiment_config[args.key]['pwnLR']
-  contexttime = experiment_config[args.key]['contexttime']
   predictiontime = experiment_config[args.key]['predictiontime']
 
   torch.manual_seed(rand)
@@ -66,18 +70,30 @@ def main(rand):
     df = pd.read_csv("https://autogluon.s3.amazonaws.com/datasets/timeseries/m4_hourly/test.csv")
     path = 'hourly'
     evm = "SMAPE"
-  #elif args.key == 'Power':
-  #  data_source = ReadPowerPKL()
-  #  evm = "MSE"
-  #elif args.key == 'Exchange':
-  #  data_source = ReadExchangePKL()
-  #  evm = "MSE"
-  #elif args.key == 'Wiki':
-  #  data_source = ReadWikipediaPKL()
-  #  evm = "MSE"
-  #elif args.key == 'Solar':
-  #  data_source = ReadSolarPKL()
-  #  evm = "MSE"
+  elif args.key == 'Power':
+    data_source = ReadPowerPKL()
+    path = 'pwr'
+    df = to_df(data_source)
+    df = df.rename(columns={'company': 'item_id', 'value': 'target'})
+    evm = "MSE"
+  elif args.key == 'Exchange':
+    data_source = ReadExchangePKL()
+    df = to_df(data_source)
+    df = df.rename(columns={'country': 'item_id', 'value': 'target'})
+    path = 'exchg'
+    evm = "MSE"
+  elif args.key == 'Wiki':
+    data_source = ReadWikipediaPKL()
+    df = to_df(data_source)
+    df = df.rename(columns={'country': 'item_id', 'value': 'target'})
+    path = 'wiki'
+    evm = "MSE"
+  elif args.key == 'Solar':
+    data_source = ReadSolarPKL()
+    df = to_df(data_source)
+    df = df.rename(columns={'country': 'item_id', 'value': 'target'})
+    path = 'slr'
+    evm = "MSE"
 
   df = pd.read_csv("https://autogluon.s3.amazonaws.com/datasets/timeseries/m4_hourly/train.csv")
 
@@ -92,12 +108,12 @@ def main(rand):
 
   predictor = TimeSeriesPredictor(
     prediction_length=pred_length,
-    path=f"autogluon-m4-{path}",
+    path=f"autogluon-{args.key}-{path}",
     target="target",
-    eval_metric="SMAPE",
+    eval_metric=evm,
   )
 
-  time_limit = 60*60*6 # 6 hours for search to ensure fair comparison
+  time_limit = 60*60 # 1 hour for search to ensure fair comparison
 
   predictor.fit(
     train_data,
@@ -107,7 +123,7 @@ def main(rand):
   )
 
   scores = predictor.evaluate(test_data, metrics='SMAPE')
-  log_file = f'autogluon-m4-{path}/{args.key}_{args.experiment}_{rand}.json'
+  log_file = f'autogluon-{args.key}-{path}/{args.key}_{args.experiment}_{rand}.json'
   with open(log_file, 'w') as json_file:
     json.dump(scores, json_file, indent=4)
 

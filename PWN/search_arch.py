@@ -42,6 +42,7 @@ from torch.utils.data import TensorDataset, DataLoader
 from data_source import M4Dataset
 from torch.utils.data import random_split
 import json
+from rtpt import RTPT
 
 device = 'cuda'
 
@@ -50,7 +51,7 @@ device = 'cuda'
 #warnings.filterwarnings("ignore", message=".*affe2")
 warnings.filterwarnings("ignore")
 
-parser = argparse.ArgumentParser("cifar")
+parser = argparse.ArgumentParser()
 parser.add_argument('--data', type=str, default='../data', help='location of the data corpus')
 parser.add_argument('--batch_size', type=int, default=16, help='batch size')
 parser.add_argument('--learning_rate', type=float, default=0.01, help='init learning rate')#0.01 standard #0.001 for exchange
@@ -77,23 +78,22 @@ parser.add_argument('--arch_weight_decay', type=float, default=1e-3, help='weigh
 parser.add_argument('--key', type=str, default='M4_Yearly', help='Identifire String for the dataset to use')
 #parser.add_argument('--experiment', type=int, default=0, help='What PWN combination should be used, 0-SRNN+CWSPN ; 1-SRNN+WEin ; 2-STrans+CWWSPN ; 3-STrans+WEin')
 
-
 args = parser.parse_args()
 
-args.save = 'search-{}-{}'.format(args.save, time.strftime("%Y%m%d-%H%M%S"))
-utils.create_exp_dir(args.save, scripts_to_save=glob.glob('*.py'))
-
-log_format = '%(asctime)s %(message)s'
-logging.basicConfig(stream=sys.stdout, level=logging.INFO,
-    format=log_format, datefmt='%m/%d %I:%M:%S %p')
-fh = logging.FileHandler(os.path.join(args.save, 'log.txt'))
-fh.setFormatter(logging.Formatter(log_format))
-logging.getLogger().addHandler(fh)
-
-
+device = device + f':{args.gpu}'
 
 
 def main(rand):
+
+  save_file = 'search-{}-{}-{}'.format(args.save, args.key, rand)
+  utils.create_exp_dir(save_file, scripts_to_save=glob.glob('*.py'))
+
+  log_format = '%(asctime)s %(message)s'
+  logging.basicConfig(stream=sys.stdout, level=logging.INFO,
+      format=log_format, datefmt='%m/%d %I:%M:%S %p')
+  fh = logging.FileHandler(os.path.join(save_file, 'log.txt'))
+  fh.setFormatter(logging.Formatter(log_format))
+  logging.getLogger().addHandler(fh)
 
 # Set configs for PWN components #######################################################################################
   np.random.seed(rand)#np.random.seed(args.seed)
@@ -375,13 +375,16 @@ def main(rand):
 
   architect = Architect(model, args)
 
+  rtpt = RTPT('JS', 'PWN_NAS', args.epochs)
+  rtpt.start()
+
   for epoch in range(args.epochs):
     scheduler.step()
     lr = scheduler.get_lr()[0]
     logging.info('epoch %d lr %e', epoch, lr)
 
-    print(F.softmax(model.alphas_normal, dim=-1))
-    print(F.softmax(model.alphas_reduce, dim=-1))
+    #print(F.softmax(model.alphas_normal, dim=-1))
+    #print(F.softmax(model.alphas_reduce, dim=-1))
 
     # training
     train_acc, train_obj = train_new(train_loader, test_loader, model, architect, criterion, optimizer, lr,model_1,smape_use,earlyStop)
@@ -402,7 +405,8 @@ def main(rand):
     logging.info('Forcaster weights %s', F.softmax(model.alphas_normal, dim=-1).tolist())
     logging.info('SPN weights %s', F.softmax(model.alphas_reduce, dim=-1).tolist())
 
-    utils.save(model, os.path.join(args.save, 'weights.pt'))
+    utils.save(model, os.path.join(save_file, f'weights_{rand}.pt'))
+    rtpt.step()
 
 def train_new(train_loader,test_loader, model, architect, criterion, optimizer, lr,pwn_model,use_smape,earlyStop):
   objs = utils.AvgrageMeter()
@@ -502,8 +506,5 @@ def train_new(train_loader,test_loader, model, architect, criterion, optimizer, 
 
 if __name__ == '__main__':
   torch.autograd.set_detect_anomaly(True)
-  main(rand = 2)
-  main(rand=22)
-  main(rand = 222)
-  main(rand=2222)
-  main(rand=22222)
+  for r in range(10):
+     main(r)

@@ -33,8 +33,8 @@ class PWN(Model):
     def __init__(self, hidden_size, output_size, fft_compression, window_size, overlap, device, c_config: CWSPNConfig, num_srnn_layers=2, train_spn_on_gt=True,
                  train_spn_on_prediction=False, train_rnn_w_ll=False, weight_mse_by_ll=None, always_detach=False,
                  westimator_early_stopping=5, step_increase=False, westimator_stop_threshold=.5,
-                 westimator_final_learn=2, ll_weight=0.5, ll_weight_inc_dur=20, use_transformer=False, use_maf=False,
-                 smape_target=False):
+                 westimator_final_learn=2, ll_weight=0.5, ll_weight_inc_dur=20, use_transformer=False, 
+                 use_maf=False, smape_target=False):
 
         assert train_spn_on_gt or train_spn_on_prediction
         assert not train_rnn_w_ll or train_spn_on_gt
@@ -119,7 +119,7 @@ class PWN(Model):
 
         #srnn_optimizer = torch.optim.RMSprop(srnn_parameters, lr=lr, alpha=0.9)
         if not self.use_transformer:
-            srnn_optimizer = torch.optim.Adam(srnn_parameters, lr=0.001)
+            srnn_optimizer = torch.optim.Adam(srnn_parameters, lr=0.0004)
         else:
             srnn_optimizer = torch.optim.RMSprop(srnn_parameters, 0.0004)
         westimator_optimizer = torch.optim.Adam(westimator_parameters, lr=1e-4)
@@ -282,7 +282,8 @@ class PWN(Model):
                 if (i + 1) % 10 == 0:
                     print(f'Epoch {epoch + 1} / {epochs}: Step {(i + 1)} / {len(dataloader)}. '
                           f'Avg. WCSPN Loss: {westimator_loss_e / (i + 1)} '
-                          f'Avg. SRNN Loss: {srnn_loss_e / (i + 1)}')
+                          f'Avg. SRNN Loss: {srnn_loss_e / (i + 1)}'
+                          f'Avg. pLoss: {srnn_loss_p_e / (i + 1)}')
 
             #lr_scheduler.step()
 

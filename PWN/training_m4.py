@@ -15,7 +15,7 @@ import os
 
 plot_base_path = 'res/plots/'
 model_base_path = 'res/models/'
-experiments_base_path = 'res/experiments/'
+experiments_base_path = 'res/experiments_test/'
 
 uncertainty_estimator = 'wein'
 
@@ -27,6 +27,7 @@ config_w.structure = {'type': 'binary-trees', 'depth': 4, 'num_repetitions': 5}
 config_w.exponential_family_args = {'min_var': 1e-4, 'max_var': 4.}
 config_w.prepare_joint = False
 config_w.K = 2
+config_w.online_em_stepsize = 0.05
 
 config_c = CWSPNConfig()
 config_c.num_gauss = 2
@@ -42,7 +43,7 @@ config_t = TransformerConfig()
 
 manual_split = True
 
-dataset_key = 'm4_Yearly'
+dataset_key = 'm4_Monthly'
 hyperparams = {
     'm4_Hourly': {'window_size': 24, 'fft_compression': 1, 'context_timespan': int(20 * 24),
                'prediction_timespan': int(2 * 24), 'timespan_step': int(.5 * 24)},  # 700 Min Context
@@ -67,10 +68,12 @@ hyperparams = {
 #config.window_size = hyperparams[dataset_key]['window_size']#96#hyperparams[dataset_key]['window_size']#96
 #config.fft_compression = hyperparams[dataset_key]['fft_compression']#4#hyperparams[dataset_key]['fft_compression']#4
 use_transformer = False
-hidden_size = 128 if use_transformer else 64
+hidden_size = 196 #if use_transformer else 196
 output_size = 6
-learning_rate = 0.0004 if use_transformer else 0.004
+learning_rate = 0.0004 if use_transformer else 0.001
 epochs = 15000
+num_srnn_layers = 3 #3
+ll_weight = 0.001
 
 exchange_context_timespan = 6*30 #6*30
 exchange_prediction_timespan = 30
@@ -94,25 +97,26 @@ solar_timespan_step = 10*24
 #config.fft_compression = hyperparams[dataset_key]['fft_compression']
 
 #Define experiment to run, ReadM4 requieres the m4key as an additional argument
-device = torch.device('cuda:0') # IMPORTANT: rationals package only supports one cuda device, delivers wrong results on device != 0!
+device = torch.device('cuda:7') # IMPORTANT: rationals package only supports one cuda device, delivers wrong results on device != 0!
 
 m4_key = dataset_key[3:].lower()
 dataset = M4Dataset(train_len=hyperparams[dataset_key]['context_timespan'], test_len=hyperparams[dataset_key]['prediction_timespan'], subset=m4_key)
 dataset.prepare()
 
-seeds = list(range(10))
+seeds = list(range(1))
 for s in seeds:
     torch.manual_seed(s)
 
     dataloader = DataLoader(dataset.train_data, batch_size=256, shuffle=True)
     if uncertainty_estimator == 'cwspn':
         model = PWNv2(hidden_size, hyperparams[dataset_key]['prediction_timespan'], hyperparams[dataset_key]['fft_compression'], 
-                  hyperparams[dataset_key]['window_size'], 0.5, device, config_c, num_srnn_layers=2, train_spn_on_gt=False, train_spn_on_prediction=True,
-                smape_target=True, use_transformer=use_transformer, train_rnn_w_ll=False)
+                  hyperparams[dataset_key]['window_size'], 0.5, device, config_c, num_srnn_layers=num_srnn_layers, train_spn_on_gt=True, train_spn_on_prediction=False,
+                smape_target=True, use_transformer=use_transformer, train_rnn_w_ll=True, ll_weight_inc_dur=300, westimator_final_learn=0,
+                weight_mse_by_ll='het', ll_weight=ll_weight)
     elif uncertainty_estimator == 'wein':
         model = PWNEMv2(hidden_size, hyperparams[dataset_key]['prediction_timespan'], hyperparams[dataset_key]['fft_compression'],
-                        hyperparams[dataset_key]['window_size'], 0.5, device, config_w, num_srnn_layers=2, train_spn_on_gt=False, train_spn_on_prediction=True,
-                        train_rnn_w_ll=False, use_transformer=use_transformer, smape_target=True)
+                        hyperparams[dataset_key]['window_size'], 0.5, device, config_w, num_srnn_layers=num_srnn_layers, train_spn_on_gt=True, train_spn_on_prediction=False,
+                        train_rnn_w_ll=True, use_transformer=use_transformer, smape_target=True, ll_weight_inc_dur=20, weight_mse_by_ll=True, ll_weight=ll_weight)
 
     start_time = time.time()
     model.train(dataloader, epochs=epochs, lr=learning_rate)
@@ -128,7 +132,7 @@ for s in seeds:
 
     log_dict = {
         "neural_model": "transformer" if use_transformer else "srnn",
-        "pc": "cwspn",
+        "pc": uncertainty_estimator,
         "test_smape": result.item(),
         "hyperparameters": {
             "hidden_size": hidden_size,

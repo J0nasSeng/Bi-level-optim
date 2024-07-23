@@ -34,7 +34,7 @@ class PWNEM(Model):
     def __init__(self, hidden_size, output_size, fft_compression, window_size, overlap, device, c_config: WEinConfig, num_srnn_layers=2, train_spn_on_gt=True,
                  train_spn_on_prediction=False, train_rnn_w_ll=False, weight_mse_by_ll=None, always_detach=False,
                  westimator_early_stopping=5, step_increase=False, westimator_stop_threshold=.5,
-                 westimator_final_learn=2, ll_weight=0.5, ll_weight_inc_dur=20, use_transformer=False,
+                 westimator_final_learn=2, ll_weight=0.0001, ll_weight_inc_dur=20, use_transformer=False,
                  smape_target=False):
 
         assert train_spn_on_gt or train_spn_on_prediction
@@ -106,9 +106,9 @@ class PWNEM(Model):
         srnn_parameters = list(self.srnn.parameters())
 
         if not self.use_transformer:
-            srnn_optimizer = torch.optim.Adam(srnn_parameters, lr=0.001)
+            srnn_optimizer = torch.optim.Adam(srnn_parameters, lr=lr)
         else:
-            srnn_optimizer = torch.optim.RMSprop(srnn_parameters, 0.0004)
+            srnn_optimizer = torch.optim.RMSprop(srnn_parameters, lr)
 
         if self.train_rnn_w_ll:
             current_ll_weight = 0
@@ -154,7 +154,8 @@ class PWNEM(Model):
                         out_w, _ = self.call_westimator(batch_westimator_x, batch_westimator_y)
 
                         gt_ll = EinsumNetwork.log_likelihoods(out_w)
-                        westimator_loss = gt_ll.sum()
+                        westimator_loss = -gt_ll.sum()
+                        #westimator_loss = - torch.logsumexp(gt_ll, dim=1).sum()
                         westimator_loss.backward()
 
                         self.westimator.net.em_process_batch()
@@ -201,7 +202,7 @@ class PWNEM(Model):
                     l_loss = ll_loss(prediction_ll)
 
                     if self.weight_mse_by_ll is None:
-                        srnn_loss = (1 - current_ll_weight) * p_loss + current_ll_weight * prediction_ll_cond[:, 0]
+                        srnn_loss = (1 - current_ll_weight) * p_loss + current_ll_weight * l_loss
                     else:
                         local_ll = prediction_ll_cond[:, 0]
                         local_ll = local_ll - local_ll.max()  # From 0 to -inf
@@ -243,7 +244,8 @@ class PWNEM(Model):
                 if (i + 1) % 10 == 0:
                     print(f'Epoch {epoch + 1} / {epochs}: Step {(i + 1)} / {len(dataloader)}. '
                           f'Avg. WCSPN Loss: {westimator_loss_e / (i + 1)} '
-                          f'Avg. SRNN Loss: {srnn_loss_e / (i + 1)}')
+                          f'Avg. SRNN Loss: {srnn_loss_e / (i + 1)}'
+                          f'Avg. pLoss: {srnn_loss_p_e / (i + 1)}')
 
             self.westimator.net.em_update()
             #lr_scheduler.step()

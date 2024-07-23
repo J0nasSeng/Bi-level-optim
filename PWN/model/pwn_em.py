@@ -248,7 +248,7 @@ class PWNEM(Model):
                     l_loss = ll_loss(prediction_ll)
 
                     if self.weight_mse_by_ll is None:
-                        srnn_loss = (1 - current_ll_weight) * p_loss + current_ll_weight * prediction_ll_cond[:, 0]
+                        srnn_loss = (1 - current_ll_weight) * p_loss + current_ll_weight * l_loss
                     else:
                         local_ll = prediction_ll_cond[:, 0]
                         local_ll = local_ll - local_ll.max()  # From 0 to -inf
@@ -295,7 +295,8 @@ class PWNEM(Model):
                 if (i + 1) % 10 == 0:
                     print(f'Epoch {epoch + 1} / {epochs}: Step {(i + 1)} / {len(idx_batches)}. '
                           f'Avg. WCSPN Loss: {westimator_loss_e / (i + 1)} '
-                          f'Avg. SRNN Loss: {srnn_loss_e / (i + 1)}')
+                          f'Avg. SRNN Loss: {srnn_loss_e / (i + 1)}'
+                          f'Avg. pLoss: {srnn_loss_p_e / (i + 1)}')
 
             self.westimator.net.em_update()
             lr_scheduler.step()
