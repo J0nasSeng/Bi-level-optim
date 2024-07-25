@@ -28,6 +28,7 @@ config_w.exponential_family_args = {'min_var': 1e-4, 'max_var': 4.}
 config_w.prepare_joint = False
 config_w.K = 2
 config_w.online_em_stepsize = 0.05
+config_w.online_em_frequency = 3
 
 config_c = CWSPNConfig()
 config_c.num_gauss = 2
@@ -43,7 +44,7 @@ config_t = TransformerConfig()
 
 manual_split = True
 
-dataset_key = 'm4_Monthly'
+dataset_key = 'm4_Yearly'
 hyperparams = {
     'm4_Hourly': {'window_size': 24, 'fft_compression': 1, 'context_timespan': int(20 * 24),
                'prediction_timespan': int(2 * 24), 'timespan_step': int(.5 * 24)},  # 700 Min Context
@@ -116,7 +117,7 @@ for s in seeds:
     elif uncertainty_estimator == 'wein':
         model = PWNEMv2(hidden_size, hyperparams[dataset_key]['prediction_timespan'], hyperparams[dataset_key]['fft_compression'],
                         hyperparams[dataset_key]['window_size'], 0.5, device, config_w, num_srnn_layers=num_srnn_layers, train_spn_on_gt=True, train_spn_on_prediction=False,
-                        train_rnn_w_ll=True, use_transformer=use_transformer, smape_target=True, ll_weight_inc_dur=20, weight_mse_by_ll=True, ll_weight=ll_weight)
+                        train_rnn_w_ll=True, use_transformer=use_transformer, smape_target=True, ll_weight_inc_dur=200, weight_mse_by_ll=True, ll_weight=ll_weight)
 
     start_time = time.time()
     model.train(dataloader, epochs=epochs, lr=learning_rate)
@@ -141,10 +142,11 @@ for s in seeds:
         },
         "execution_time": (end_time - start_time) / 3600,
         "seed": s,
-        "learning_rate": learning_rate
+        "learning_rate": learning_rate,
+        "searched": True
     }
 
-    log_file = f"{log_dict['neural_model']}_{log_dict['pc']}_{dataset_key}_{s}.json"
+    log_file = f"{log_dict['neural_model']}_{log_dict['pc']}_{dataset_key}_{s}_searched={log_dict['searched']}.json"
 
     with open(os.path.join(experiments_base_path, log_file), 'w') as f:
         json.dump(log_dict, f, indent=4)

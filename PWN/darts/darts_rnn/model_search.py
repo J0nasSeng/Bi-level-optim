@@ -25,8 +25,8 @@ class DARTSCellSearch(DARTSCell):
     for i in range(STEPS):
 
       ###### Test multiple connections ########
-      raw_out = torch.zeros(states.shape).cuda()
-      aux_out = torch.zeros(x.shape).cuda()
+      raw_out = torch.zeros(states.shape).to(x.device)
+      aux_out = torch.zeros(x.shape).to(x.device)
       for idx,state in enumerate(states):
 
         raw_out[idx],h = self.layer[i](state)
@@ -77,7 +77,7 @@ class RNNModelSearch(RNNModel):
     def _initialize_arch_parameters(self):
       k = sum(i for i in range(1, STEPS+1))
       #weights_data = torch.randn(k, len(PRIMITIVES)).mul_(1e-3) #random arch init?
-      weights_data = Variable(1e-3 * torch.randn(k, len(PRIMITIVES)).cuda(), requires_grad=True)
+      weights_data = Variable(1e-3 * torch.randn(k, len(PRIMITIVES)), requires_grad=True)
       weights_data_aux = weights_data.requires_grad_()
       #self.weights = weights_data_aux.cuda()
       self.weights = weights_data

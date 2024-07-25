@@ -22,10 +22,14 @@ class DARTSCell(nn.Module):
     # genotype is None when doing arch search
     steps = STEPS
 
-    input_size = config_layer['input_size']
+    #input_size = config_layer['input_size']
     hidden_size = config_layer['hidden_size']
     fftcomp = config_layer['fftcomp']
     windowsize = config_layer['windowsize']
+
+    #hidden_size = config_layer.hidden_dim
+    #fftcomp = config_layer.fft_compression
+    #windowsize = config_layer.window_size
     #cell = torch.nn.GRU(2*input_size, hidden_size,num_layers=1, batch_first=True)
     cell = SpectralGRULayer(hidden_size,device=device,fft_compression=fftcomp,window_size=windowsize)
     self.layer = nn.ModuleList([

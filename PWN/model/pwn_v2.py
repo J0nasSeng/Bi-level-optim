@@ -9,8 +9,8 @@ from util.losses import SMAPE
 import numpy as np
 import torch
 import torch.nn as nn
-#from darts.darts_cnn.model_search import Network as CWSPNModelSearch
-#from darts.darts_rnn.model_search import RNNModelSearch
+from darts.darts_cnn.model_search import Network as CWSPNModelSearch
+from darts.darts_rnn.model_search import RNNModelSearch
 from rtpt import RTPT
 # Use GPU if avaiable
 
@@ -34,13 +34,17 @@ class PWN(Model):
                  train_spn_on_prediction=False, train_rnn_w_ll=False, weight_mse_by_ll=None, always_detach=False,
                  westimator_early_stopping=5, step_increase=False, westimator_stop_threshold=.5,
                  westimator_final_learn=2, ll_weight=0.5, ll_weight_inc_dur=20, use_transformer=False, 
-                 use_maf=False, smape_target=False):
+                 use_maf=False, smape_target=False, use_searched_arch=True):
 
         assert train_spn_on_gt or train_spn_on_prediction
         assert not train_rnn_w_ll or train_spn_on_gt
 
         if not use_transformer:
             self.srnn = SpectralGRUNet(hidden_size, output_size, device, num_srnn_layers, fft_compression, window_size, overlap).to(device) 
+            if use_searched_arch:
+                self.srnn = RNNModelSearch()
+                arch_params = load_arch_params(srnn=True)
+                self.srnn.fix_arch_params(arch_params)
         else:
             #trans_cfg = TransformerConfig(normalize_fft=True, window_size=window_size,
             #                  fft_compression=fft_compression)
@@ -61,6 +65,8 @@ class PWN(Model):
                                   complex=trans_cfg.is_complex, native_complex=trans_cfg.native_complex, device=device).to(device)
 
         self.westimator = CWSPN(c_config, device) if not use_maf else MAFEstimator()
+        
+        self.use_searched_arch = use_searched_arch
 
         self.train_spn_on_gt = train_spn_on_gt
         self.train_spn_on_prediction = train_spn_on_prediction

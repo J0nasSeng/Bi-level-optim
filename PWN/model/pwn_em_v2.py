@@ -1,4 +1,5 @@
 from .srnn import SpectralGRUNet
+from .spectral_rnn import SpectralRNNConfig
 from .spectral_rnn.manifold_optimization import ManifoldOptimizer
 from .spectral_rnn.cgRNN import clip_grad_value_complex_
 from .transformer import TransformerPredictor, TransformerConfig, TransformerNet
@@ -12,8 +13,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from rtpt import RTPT
-#from darts.darts_cnn.model_search import Network as CWSPNModelSearch
-#from darts.darts_rnn.model_search import RNNModelSearch
+from darts.darts_rnn.model_search import RNNModelSearch
 
 def load_arch_params(srnn=True):
 
@@ -35,13 +35,18 @@ class PWNEM(Model):
                  train_spn_on_prediction=False, train_rnn_w_ll=False, weight_mse_by_ll=None, always_detach=False,
                  westimator_early_stopping=5, step_increase=False, westimator_stop_threshold=.5,
                  westimator_final_learn=2, ll_weight=0.0001, ll_weight_inc_dur=20, use_transformer=False,
-                 smape_target=False):
+                 smape_target=False, use_learned_arch=True):
 
         assert train_spn_on_gt or train_spn_on_prediction
         assert not train_rnn_w_ll or train_spn_on_gt
 
         if not use_transformer:
             self.srnn = SpectralGRUNet(hidden_size, output_size, device, num_srnn_layers, fft_compression, window_size, overlap).to(device) 
+            if use_learned_arch:
+                cfg = dict(windowsize=window_size, overlap=overlap, fftcomp=fft_compression, hidden_size=hidden_size)
+                self.srnn = RNNModelSearch(self.srnn.stft, cfg, 10000, 300, 300, 300).to(device)
+                self.arch_params = load_arch_params(srnn=True).to(device)
+                self.srnn.fix_arch_params(self.arch_params)
         else:
             #trans_cfg = TransformerConfig(normalize_fft=True, window_size=window_size,
             #                  fft_compression=fft_compression)
@@ -78,6 +83,7 @@ class PWNEM(Model):
         self.use_transformer = use_transformer
         self.smape_target = smape_target
         self.device = device
+        self.use_searched_arch = use_learned_arch
 
     def train(self, dataloader, epochs=70, lr=0.004, lr_decay=0.97):
 
@@ -166,8 +172,10 @@ class PWNEM(Model):
                     westimator_loss_e += westimator_loss.detach()
 
                 srnn_optimizer.zero_grad()
-                prediction_raw, f_c = self.srnn(batch_x, batch_y)
-
+                if self.use_searched_arch:
+                    prediction_raw, f_c = self.srnn(batch_x, batch_y, self.arch_params)
+                else:
+                    prediction_raw, f_c = self.srnn(batch_x, batch_y)
                 if self.westimator.use_stft:
                     prediction_ll_ = self.call_westimator(batch_westimator_x,
                                                           f_c.reshape((f_c.shape[0], -1))

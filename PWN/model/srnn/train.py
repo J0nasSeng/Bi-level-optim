@@ -15,7 +15,7 @@ class M4Dataset:
         self.norm_stats = {}
         self._train_len = train_len
         self._test_len = test_len
-        self.df = load_forecasting('m4_quarterly_dataset', return_metadata=False)
+        self.df = load_forecasting('m4_monthly_dataset', return_metadata=False)
 
     def prepare(self):
         x_data, y_data = [], []
@@ -44,12 +44,12 @@ class M4Dataset:
             y_data.append(y)
        
         self.data = TensorDataset(torch.from_numpy(np.array(x_data)), torch.from_numpy(np.array(y_data)))
-        train_size = int(0.7 * len(self.data))
+        train_size = int(0.8 * len(self.data))
         test_size = len(self.data) - train_size
         self.train_data, self.test_data = random_split(self.data, [train_size, test_size])
 
    
-dataset = M4Dataset()
+dataset = M4Dataset(train_len=108, test_len=18)
 dataset.prepare()
 dataloader = DataLoader(dataset.train_data, batch_size=256, shuffle=True)
 
@@ -64,7 +64,8 @@ model = SpectralGRUNet(hidden_size, output_size, device, num_layers).to(device)
 #criterion = nn.MSELoss()
 criterion = SMAPE()
 optimizer = optim.Adam(model.parameters(), lr=0.001)
-#lr_scheduler = optim.lr_scheduler.LinearLR()
+#optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=1.0)
+lr_scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.9)
 
 for name, param in model.named_parameters():
     if 'weight' in name:
@@ -72,7 +73,7 @@ for name, param in model.named_parameters():
 
 
 # 3. Train the model
-num_epochs = 1000
+num_epochs = 10000
 
 for epoch in range(num_epochs):
 
@@ -96,10 +97,12 @@ for epoch in range(num_epochs):
         optimizer.zero_grad()
         loss.backward()
 
-        optimizer.step()
+        #nn.utils.clip_grad.clip_grad_norm_(model.parameters(), 0.5)
 
-        #lr_scheduler.step()
+        optimizer.step()
         
+    if epoch % 200 == 0:
+        lr_scheduler.step()
     if (epoch+1) % 10 == 0:
         print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {avg_loss:.4f}')
 

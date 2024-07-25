@@ -15,8 +15,6 @@ from autogluon.timeseries import TimeSeriesDataFrame, TimeSeriesPredictor
 from data_source import ReadExchangePKL, ReadPowerPKL, ReadSolarPKL, ReadWikipediaPKL
 from rtpt import RTPT
 
-device = 'cuda'
-
 #warnings.filterwarnings("ignore", message=".*affe2")
 warnings.filterwarnings("ignore")
 
@@ -27,6 +25,8 @@ parser.add_argument('--experiment', type=int, default=0, help='What PWN combinat
 parser.add_argument('--gpu', type=int, default=0, help='gpu device id')
 
 args = parser.parse_args()
+
+device = f'cuda:{args.gpu}'
 
 def to_df(ds):
   vals = []
@@ -119,10 +119,12 @@ def main(rand):
     train_data,
     presets="best_quality",
     time_limit=time_limit,
-    random_seed=rand
+    random_seed=rand,
+    #excluded_model_types=['SeasonalNaive', 'RecursiveTabular', 'DirectTabular', 'CrostonSBA', 'NPTS', 'DynamicOptimizedTheta', 'AutoETS', 'AutoARIMA'],
+
   )
 
-  scores = predictor.evaluate(test_data, metrics='SMAPE')
+  scores = predictor.evaluate(test_data, metrics=evm)
   log_file = f'autogluon-{args.key}-{path}/{args.key}_{args.experiment}_{rand}.json'
   with open(log_file, 'w') as json_file:
     json.dump(scores, json_file, indent=4)
