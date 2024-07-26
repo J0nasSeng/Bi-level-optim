@@ -12,11 +12,10 @@ from model.spectral_rnn.cgRNN import RNNLayer
 from model.srnn import SpectralGRULayer
 
 INITRANGE = 0.04
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 class DARTSCell(nn.Module):
 
-  def __init__(self,config_layer,fix_weight,ninp, nhid, dropouth, dropoutx, genotype):
+  def __init__(self,config_layer,fix_weight,ninp, nhid, dropouth, dropoutx, genotype, device):
     super(DARTSCell, self).__init__()
     self.fix_weight = fix_weight
     # genotype is None when doing arch search
@@ -102,7 +101,7 @@ class RNNModel(nn.Module):
 
     def __init__(self,stft,config_layer, ntoken, ninp, nhid, nhidlast,
                  dropout=0.5, dropouth=0.5, dropoutx=0.5, dropouti=0.5, dropoute=0.1,
-                 cell_cls=DARTSCell, genotype=None):
+                 cell_cls=DARTSCell, genotype=None, device=None):
         super(RNNModel, self).__init__()
         #self.lockdrop = LockedDropout()
         #self.encoder = nn.Embedding(ntoken, ninp)
@@ -115,10 +114,10 @@ class RNNModel(nn.Module):
 
         if cell_cls == DARTSCell:
             assert genotype is not None
-            self.rnns = [cell_cls(config_layer,self.fix_weight,ninp, nhid, dropouth, dropoutx, genotype)]
+            self.rnns = [cell_cls(config_layer,self.fix_weight,ninp, nhid, dropouth, dropoutx, genotype, device=device)]
         else:
             assert genotype is None
-            self.rnns = [cell_cls(config_layer,self.fix_weight,ninp, nhid, dropouth, dropoutx)]
+            self.rnns = [cell_cls(config_layer,self.fix_weight,ninp, nhid, dropouth, dropoutx, device=device)]
 
         steps = STEPS
 

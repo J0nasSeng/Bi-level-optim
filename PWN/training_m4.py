@@ -17,7 +17,7 @@ plot_base_path = 'res/plots/'
 model_base_path = 'res/models/'
 experiments_base_path = 'res/experiments_test/'
 
-uncertainty_estimator = 'wein'
+uncertainty_estimator = 'cwspn'
 
 config_w = WEinConfig()
 config_w.exponential_family = NormalArray #NormalArray #MultivariateNormalArray
@@ -69,11 +69,11 @@ hyperparams = {
 #config.window_size = hyperparams[dataset_key]['window_size']#96#hyperparams[dataset_key]['window_size']#96
 #config.fft_compression = hyperparams[dataset_key]['fft_compression']#4#hyperparams[dataset_key]['fft_compression']#4
 use_transformer = False
-hidden_size = 196 #if use_transformer else 196
+hidden_size = 128 #if use_transformer else 196
 output_size = 6
 learning_rate = 0.0004 if use_transformer else 0.001
 epochs = 15000
-num_srnn_layers = 3 #3
+num_srnn_layers = 2 #3
 ll_weight = 0.001
 
 exchange_context_timespan = 6*30 #6*30
@@ -98,7 +98,7 @@ solar_timespan_step = 10*24
 #config.fft_compression = hyperparams[dataset_key]['fft_compression']
 
 #Define experiment to run, ReadM4 requieres the m4key as an additional argument
-device = torch.device('cuda:7') # IMPORTANT: rationals package only supports one cuda device, delivers wrong results on device != 0!
+device = torch.device('cuda:1') # IMPORTANT: rationals package only supports one cuda device, delivers wrong results on device != 0!
 
 m4_key = dataset_key[3:].lower()
 dataset = M4Dataset(train_len=hyperparams[dataset_key]['context_timespan'], test_len=hyperparams[dataset_key]['prediction_timespan'], subset=m4_key)
@@ -113,11 +113,12 @@ for s in seeds:
         model = PWNv2(hidden_size, hyperparams[dataset_key]['prediction_timespan'], hyperparams[dataset_key]['fft_compression'], 
                   hyperparams[dataset_key]['window_size'], 0.5, device, config_c, num_srnn_layers=num_srnn_layers, train_spn_on_gt=True, train_spn_on_prediction=False,
                 smape_target=True, use_transformer=use_transformer, train_rnn_w_ll=True, ll_weight_inc_dur=300, westimator_final_learn=0,
-                weight_mse_by_ll='het', ll_weight=ll_weight)
+                weight_mse_by_ll='het', ll_weight=ll_weight, use_searched_arch=False)
     elif uncertainty_estimator == 'wein':
         model = PWNEMv2(hidden_size, hyperparams[dataset_key]['prediction_timespan'], hyperparams[dataset_key]['fft_compression'],
                         hyperparams[dataset_key]['window_size'], 0.5, device, config_w, num_srnn_layers=num_srnn_layers, train_spn_on_gt=True, train_spn_on_prediction=False,
-                        train_rnn_w_ll=True, use_transformer=use_transformer, smape_target=True, ll_weight_inc_dur=200, weight_mse_by_ll=True, ll_weight=ll_weight)
+                        train_rnn_w_ll=True, use_transformer=use_transformer, smape_target=True, ll_weight_inc_dur=200, weight_mse_by_ll=True, ll_weight=ll_weight,
+                        use_learned_arch=False)
 
     start_time = time.time()
     model.train(dataloader, epochs=epochs, lr=learning_rate)

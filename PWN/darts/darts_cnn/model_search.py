@@ -45,6 +45,53 @@ class Cell(nn.Module):
       states.append(s)
 
     return torch.mean(torch.cat(states[-4:], dim=1), dim=1)
+  
+
+class DiscreteCell(nn.Module):
+
+  def __init__(self, steps,in_seq_length):
+    super(DiscreteCell, self).__init__()
+    self._steps = steps
+    self._ops = nn.ModuleList()
+    self._bns = nn.ModuleList()
+    for i in range(self._steps):
+
+      op = MixedOp(C=1, stride=1)
+      self._ops.append(op)
+
+  def forward(self, input):
+
+    states = [input]
+    offset = 0
+    for i in range(self._steps):
+      #s = sum(self._ops[i](h, weights[offset+j]) for j, h in enumerate(states))
+      modules = self.mods[offset:offset+len(states)]
+      s = sum([m(h) for m, h in zip(modules, states)])
+      offset += len(states)
+      states.append(s)
+
+    return torch.mean(torch.cat(states[-4:], dim=1), dim=1)
+  
+  def define_architect(self, weights):
+    self.mods = nn.ModuleList()
+    offset = 0
+    states = [0]
+    for i in range(self._steps):
+      weight_subset = weights[offset:offset + len(states)]
+      mx, _ = torch.max(weight_subset, dim=0)
+      best_two = torch.argsort(mx.flatten())[:2]
+      if len(best_two) == 2:
+        prim1, prim2 = PRIMITIVES[best_two[0]], PRIMITIVES[best_two[1]]
+        op1, op2 = OPS[prim1](C=1, stride=1, affine=False), OPS[prim2](C=1, stride=1, affine=False)
+        self.mods.append(op1)
+        self.mods.append(op2)
+      else:
+        prim = PRIMITIVES[best_two[0]]
+        op = OPS[prim](C=1, stride=1, affine=False)
+        self.mods.append(op)
+
+      offset += len(states)
+      states.append(1)
 
 
 class Network(nn.Module):
@@ -136,3 +183,55 @@ class Network(nn.Module):
     )
     return genotype
 
+
+class DiscreteNetwork(nn.Module):
+
+  def __init__(self,in_seq_length, output_length,sum_params, layers, steps=4):
+    super(DiscreteNetwork, self).__init__()
+    self.output_length = output_length
+    self.in_seq_length = in_seq_length
+    self._layers = layers
+    self._steps = steps
+    self._sum_params = sum_params
+    self.cells = nn.ModuleList()
+
+    self.global_pooling = nn.AdaptiveAvgPool2d(1)
+    self.lin_layer = nn.Linear(in_seq_length, output_length)
+
+    self._initialize_alphas()
+
+  def forward(self, input):
+    input_aux = input.unsqueeze(1)
+    for i, cell in enumerate(self.cells):
+      out_aux = cell(input_aux)
+    #out = self.global_pooling(s1)
+    #logits = self.classifier(out.view(out.size(0),-1))
+
+    #out_aux_2 = out_aux.squeez(1)
+    out = self.lin_layer(out_aux)
+    sum_params = out[:, :self._sum_params]
+    leaf_params = out[:, self._sum_params:]
+    return sum_params , leaf_params
+
+  def _loss(self, input, target):
+    logits = self(input)
+    return self._criterion(logits, target) 
+
+  def _initialize_alphas(self):
+    k = sum(1 for i in range(self._steps) for n in range(2+i))
+    num_ops = len(PRIMITIVES)
+
+    self.alphas_normal = Variable(1e-3*torch.randn(k, num_ops).cuda(), requires_grad=True)
+    self.alphas_reduce = Variable(1e-3*torch.randn(k, num_ops).cuda(), requires_grad=True)
+    self._arch_parameters = [
+      self.alphas_normal,
+      self.alphas_reduce,
+    ]
+
+  def define_architecture(self, weights):
+    weights = F.softmax(self.alphas_normal, dim=-1)
+
+    for i in range(self._layers):
+      cell = DiscreteCell(self._steps, self.in_seq_length)
+      cell.define_architect(weights)
+      self.cells += [cell]

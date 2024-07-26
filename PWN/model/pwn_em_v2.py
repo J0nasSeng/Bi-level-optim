@@ -256,7 +256,9 @@ class PWNEM(Model):
                           f'Avg. pLoss: {srnn_loss_p_e / (i + 1)}')
 
             self.westimator.net.em_update()
-            #lr_scheduler.step()
+
+            if epoch % 200 == 0:
+                lr_scheduler.step()
 
             rtpt_obj.step()
 

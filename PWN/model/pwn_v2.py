@@ -9,7 +9,8 @@ from util.losses import SMAPE
 import numpy as np
 import torch
 import torch.nn as nn
-from darts.darts_cnn.model_search import Network as CWSPNModelSearch
+from darts.darts_cnn.model_search import DiscreteNetwork as CWSPNModelSearch
+#from darts.darts_cnn.model_search import Network as CWSPNModelSearch # NOTE: Also an option, but does not fully discretize architecture. Sometimes harder to learn
 from darts.darts_rnn.model_search import RNNModelSearch
 from rtpt import RTPT
 # Use GPU if avaiable
@@ -42,9 +43,11 @@ class PWN(Model):
         if not use_transformer:
             self.srnn = SpectralGRUNet(hidden_size, output_size, device, num_srnn_layers, fft_compression, window_size, overlap).to(device) 
             if use_searched_arch:
-                self.srnn = RNNModelSearch()
-                arch_params = load_arch_params(srnn=True)
-                self.srnn.fix_arch_params(arch_params)
+                cfg = dict(windowsize=window_size, overlap=overlap, fftcomp=fft_compression, hidden_size=hidden_size)
+                self.srnn = RNNModelSearch(self.srnn.stft, cfg, 10000, 300, 300, 300, device).to(device)
+                self.rnn_arch_params = load_arch_params(srnn=True).to(device)
+                self.cwpsn_arch_params = load_arch_params(srnn=False).to(device)
+                self.srnn.fix_arch_params(self.rnn_arch_params)
         else:
             #trans_cfg = TransformerConfig(normalize_fft=True, window_size=window_size,
             #                  fft_compression=fft_compression)
@@ -84,6 +87,7 @@ class PWN(Model):
         self.use_maf = use_maf
         self.smape_target = smape_target
         self.device = device
+        self.use_searched_arch = use_searched_arch
 
     def train(self, dataloader, epochs=70, lr=0.004, lr_decay=0.97):
         device = self.device
@@ -105,7 +109,9 @@ class PWN(Model):
                 2 if self.westimator.use_stft else 1)  # input sequence length into the WeightNN
             output_length = self.westimator.num_sum_params + self.westimator.num_leaf_params  # combined length of sum and leaf params
             sum_params = self.westimator.num_sum_params
-            cwspn_weight_nn_search = CWSPNModelSearch(in_seq_length, output_length, sum_params, layers=1, steps=4).cuda()
+            cwspn_weight_nn_search = CWSPNModelSearch(in_seq_length, output_length, sum_params, layers=1, steps=4)
+            cwspn_weight_nn_search.define_architecture(self.cwpsn_arch_params)
+            cwspn_weight_nn_search = cwspn_weight_nn_search.to(device)
             self.westimator.weight_nn = cwspn_weight_nn_search
 
 
@@ -128,7 +134,7 @@ class PWN(Model):
             srnn_optimizer = torch.optim.Adam(srnn_parameters, lr=0.0004)
         else:
             srnn_optimizer = torch.optim.RMSprop(srnn_parameters, 0.0004)
-        westimator_optimizer = torch.optim.Adam(westimator_parameters, lr=1e-4)
+        westimator_optimizer = torch.optim.Adam(westimator_parameters, lr=1e-3)
 
         if self.train_rnn_w_ll:
             current_ll_weight = 0
@@ -207,7 +213,10 @@ class PWN(Model):
                 srnn_optimizer.zero_grad()
                 westimator_optimizer.zero_grad()
 
-                prediction, coeffs = self.srnn(batch_x, batch_y)
+                if self.use_searched_arch:
+                    prediction, coeffs = self.srnn(batch_x, batch_y, self.rnn_arch_params)
+                else:
+                    prediction, coeffs = self.srnn(batch_x, batch_y)
 
                 #coeffs = torch.cat([coeffs.real, coeffs.imag], dim=-1)
                 prediction_ll, w_in = self.call_westimator(batch_westimator_x, coeffs.reshape(coeffs.shape[0], -1) # TODO: Check if this is correct

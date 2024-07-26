@@ -9,8 +9,8 @@ from darts.darts_rnn.model import DARTSCell, RNNModel
 
 class DARTSCellSearch(DARTSCell):
 
-  def __init__(self,config_layer,fix_weight, ninp, nhid, dropouth, dropoutx):
-    super(DARTSCellSearch, self).__init__(config_layer,fix_weight,ninp, nhid, dropouth, dropoutx, genotype=None)
+  def __init__(self,config_layer,fix_weight, ninp, nhid, dropouth, dropoutx, device):
+    super(DARTSCellSearch, self).__init__(config_layer,fix_weight,ninp, nhid, dropouth, dropoutx, genotype=None, device=device)
     self.bn = nn.BatchNorm1d(nhid, affine=False)
     self.fix_weight = fix_weight
   def cell(self, x,srnn_arch_weights):
