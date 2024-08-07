@@ -38,6 +38,8 @@ cd Bi-level-optim/PWN/
 python training.py
 ```
 
+> NOTE: If you want to train on M4, please use `python trainin_m4.py`.
+
 In line 26 and 58 you can choose wether or not to use an optimized architecture <br>
 If you want to run an experiment with the larger vanilla model mentioned in the paper set the <br>
 aforementioned options to False and set *config.rnn_layer_config.n_layers* in line 37 to 12. <br>
@@ -56,3 +58,15 @@ Important Notes:
 To use a new micro architecture for the SRNN and CWSPN copy the results of the architecture search (the arch. weight arrays) to *pwn.py* in  <br>
 Bi-level-optim/PWN/model/ in line 21 (SRNN) or line 25 (CWSPN). If you use PWNEM you can do the same for a searched SRNN arch in file *pwn_em.py*  <br>
 in the same folder.
+
+## Citation
+```
+@inproceedings{
+seng2024bilevel,
+title={Bi-Level One-Shot Architecture Search for Probabilistic Time Series Forecasting},
+author={Jonas Seng and Fabian Kalter and Zhongjie Yu and Fabrizio Ventola and Kristian Kersting},
+booktitle={AutoML 2024 Methods Track},
+year={2024},
+url={https://openreview.net/forum?id=AaPhnfFQYn}
+}
+```
